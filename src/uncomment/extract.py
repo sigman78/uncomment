@@ -165,9 +165,10 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
             and rc.start_row == groups[-1][-1].end_row + 1
             and rc.start_col == groups[-1][-1].start_col
             and _doc_class(rc.text, spec) == _doc_class(groups[-1][-1].text, spec)
-            # a directive line never merges with prose, so the prose part
-            # stays judged and the directive stays protected
+            # directive and suppression-marker lines never merge with prose,
+            # so the prose part stays judged and the marker keeps its scope
             and _directive_line(rc.text, spec) == _directive_line(groups[-1][-1].text, spec)
+            and _marker_line(rc.text) == _marker_line(groups[-1][-1].text)
         ):
             groups[-1].append(rc)
         else:
@@ -217,7 +218,16 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
             kind = Kind.DOC
 
         content = strip_markers(raw_text)
-        content_head = content.splitlines()[0] if content else ""
+        content_lines = [ln for ln in content.splitlines() if ln.strip()]
+        content_head = content_lines[0] if content_lines else ""
+        # line-comment groups are class-uniform (directive lines never merge
+        # with prose), so the head speaks for the group. A block comment is a
+        # directive only when it contains nothing but the directive — a prose
+        # essay hiding behind an eslint-disable first line stays judged.
+        directive = is_cgo_preamble(spec.name, attached) or (
+            is_directive_text(content_head, spec.name, kind)
+            and (kind is Kind.LINE or len(content_lines) == 1)
+        )
         comments.append(
             Comment(
                 path=path,
@@ -232,10 +242,7 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
                 attached_code=attached,
                 in_function=first.in_function,
                 function_name=first.func_name,
-                is_directive=(
-                    is_directive_text(content_head, spec.name, kind)
-                    or is_cgo_preamble(spec.name, attached)
-                ),
+                is_directive=directive,
             )
         )
 
@@ -252,6 +259,10 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
 
 def _directive_line(text: str, spec: LangSpec) -> bool:
     return is_directive_text(strip_markers(text.splitlines()[0]), spec.name, Kind.LINE)
+
+
+def _marker_line(text: str) -> bool:
+    return strip_markers(text.splitlines()[0]).startswith("uncomment-ignore")
 
 
 def _doc_class(text: str, spec: LangSpec) -> str:

@@ -36,7 +36,10 @@ class Config:
     # UC012: when true, ANY non-ASCII character in a comment is flagged,
     # not just emoji/decorative symbols
     ascii_comments: bool = False
-    # gate: comment flood (added comment lines vs added code lines)
+    # gate: baseline comments at least this similar to a new comment count as
+    # the same comment (typo fixes and light rewording are not "new")
+    baseline_similarity: float = 0.85
+    # gate: comment flood (noisy new comment lines vs added code lines)
     flood_ratio: float = 0.75
     flood_min_lines: int = 12
     # STE wording

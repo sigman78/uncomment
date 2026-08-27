@@ -41,23 +41,73 @@ _LICENSE_RE = re.compile(
 
 
 def is_license_header(comment: Comment) -> bool:
-    return comment.attachment.value == "file_header" and bool(_LICENSE_RE.search(comment.content))
+    # a license block at the very top counts even when code follows directly
+    # (which classifies it as 'preceding' rather than 'file_header')
+    at_top = comment.attachment.value == "file_header" or comment.start_line == 1
+    return at_top and bool(_LICENSE_RE.search(comment.content))
+
+
+# owned, auditable escape hatch: `uncomment-ignore[UC003]: reason` inside a
+# comment suppresses the listed rules for it; without a rule list it
+# suppresses everything anchored inside its target. A standalone marker
+# comment also covers the comment or line directly below it.
+_IGNORE_RE = re.compile(r"uncomment-ignore(?:\[(?P<rules>[A-Za-z0-9 ,]+)\])?")
+
+
+def _suppressions(sf: SourceFile) -> list[tuple[frozenset[str] | None, int, int]]:
+    sups = []
+    for i, c in enumerate(sf.comments):
+        m = _IGNORE_RE.search(c.content)
+        if not m:
+            continue
+        rules = (
+            frozenset(r.strip() for r in m.group("rules").split(",") if r.strip())
+            if m.group("rules")
+            else None
+        )
+        start, end = c.start_line, c.end_line
+        if c.content.strip().startswith("uncomment-ignore"):
+            nxt = sf.comments[i + 1] if i + 1 < len(sf.comments) else None
+            if nxt is not None and nxt.start_line == c.end_line + 1:
+                end = nxt.end_line
+            else:
+                end = c.end_line + 1  # covers the code line below
+        sups.append((rules, start, end))
+    return sups
+
+
+def _suppressed(f: Finding, sups) -> bool:
+    for rules, start, end in sups:
+        if rules is None:
+            if start <= f.line and f.end_line <= end:
+                return True
+        elif f.rule in rules and not (f.end_line < start or f.line > end):
+            return True
+    return False
+
+
+def _is_marker(c: Comment) -> bool:
+    return c.content.strip().startswith("uncomment-ignore")
 
 
 def visible_comments(sf: SourceFile, cfg: Config) -> list:
-    """Comments that rules may judge: tooling directives are exempt, plus
-    anything matching the user's extra `directive-patterns` config."""
+    """Comments that rules may judge: tooling directives and standalone
+    suppression markers are exempt, plus anything matching the user's extra
+    `directive-patterns` config."""
     extra = [re.compile(p) for p in cfg.directive_patterns]
     return [
         c
         for c in sf.comments
-        if not c.is_directive and not any(rx.search(c.content) for rx in extra)
+        if not c.is_directive
+        and not _is_marker(c)
+        and not any(rx.search(c.content) for rx in extra)
     ]
 
 
 def run_rules(sf: SourceFile, cfg: Config) -> list[Finding]:
     from dataclasses import replace
 
+    sups = _suppressions(sf)
     sf = replace(sf, comments=visible_comments(sf, cfg))
     findings: list[Finding] = []
     for r in _REGISTRY:
@@ -65,6 +115,8 @@ def run_rules(sf: SourceFile, cfg: Config) -> list[Finding]:
             continue
         rule_findings = []
         for f in r.fn(sf, cfg):
+            if _suppressed(f, sups):
+                continue
             override = cfg.severity_override(r.id)
             if override is not None:
                 f.severity = override

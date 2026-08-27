@@ -133,10 +133,12 @@ def test_disable_arg_rejects_empty_and_bogus_entries():
 # ---- version / output encoding ----
 
 def test_version_flag(capsys):
+    from uncomment import __version__
+
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert "uncomment 0.2.0" in capsys.readouterr().out
+    assert f"uncomment {__version__}" in capsys.readouterr().out
 
 
 def test_ascii_output_flag(tmp_path, capsys):

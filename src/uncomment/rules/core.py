@@ -88,22 +88,30 @@ def narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             )
 
 
-# past-tense openers narrate an edit; present tense ("Adds a newline…") is a
-# normal behavior description, so it stays out. The lookahead spares runtime
-# descriptions ("Removed from the queue when done") and adjective uses
-# ("Fixed size buffer").
+# UC003 works in two evidence tiers:
+#  - explicit edit context ("as requested", "the previous version") -> ERROR
+#  - a past-tense opener alone -> WARN; present tense ("Adds a newline…") is a
+#    normal behavior description and stays out. The lookahead spares runtime
+#    descriptions ("Removed from the queue", "Moved to the free list") and
+#    adjective uses ("Fixed-point", "Fixed size buffer").
 _CHANGE_START_RE = re.compile(
-    r"^(?:added|updated|changed|modified|fixed|removed|renamed|refactored|replaced|moved|switched"
-    r"|migrated|improved|enhanced|optimized|rewrote)\b"
-    r"(?!\s+(?:from|by|in|on|at|out|off|up|when|while|after|before|during|once|if|unless"
-    r"|point|size|width|length|number|amount|rate|capacity|cost)\b)"
+    r"^(?:added|updated|changed|modified|fixed|removed|renamed|refactored|replaced|moved"
+    r"|migrated|improved|enhanced|optimized|rewrote|corrected|simplified|reworked|adjusted"
+    r"|introduced|dropped|cleaned(?:\s+up)?)\b"
+    r"(?![\s-]+(?:from|by|in|on|at|out|off|up|when|while|after|before|during|once|if|unless"
+    r"|point|size|width|length|number|amount|rate|capacity|cost|header|timestamp|to\s+(?:the|a|an))\b)"
+    # transition verbs are edit narration regardless of preposition
+    r"|^(?:switched|reverted|ported)\b"
+    r"|^(?:now|this now)\s+(?:uses|calls|returns|relies|handles|supports|avoids|reads|writes|skips)\b"
     r"|^(?:new|change|edit|fix):",
     re.IGNORECASE,
 )
 _CHANGE_INNER_RE = re.compile(
-    r"\b(as requested|as per (the )?(instructions?|request)|per (the )?(user|reviewer|feedback)"
+    r"\b(as requested|as discussed|as per (the )?(instructions?|request)"
+    r"|per (the )?(user|reviewer|review|feedback)|in response to (the )?(review|feedback|request)"
     r"|this (change|edit|update|commit|patch)|the (old|previous|original) (implementation|version|code|logic)"
-    r"|no longer (needed|used|necessary)|instead of the (old|previous)|was (removed|changed|renamed|moved) (in|to|from))\b",
+    r"|no longer (needed|necessary|uses|needs|calls|requires|relies)"
+    r"|instead of the (old|previous)|was (removed|changed|renamed|moved) (in|to|from))\b",
     re.IGNORECASE,
 )
 
@@ -112,20 +120,32 @@ _CHANGE_INNER_RE = re.compile(
     "UC003",
     "change-narration",
     Severity.ERROR,
-    "Comment describes the edit that was made, not the code that exists. Version control holds history.",
+    "Comment describes the edit that was made, not the code that exists. "
+    "Explicit edit context is an error; a past-tense opener alone is a warning.",
 )
 def change_narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if is_license_header(c):
             continue
         head = c.content.splitlines()[0] if c.content else ""
-        if _CHANGE_START_RE.match(head) or _CHANGE_INNER_RE.search(c.content):
+        if _CHANGE_INNER_RE.search(c.content):
             yield _finding(
                 "UC003",
                 Severity.ERROR,
                 c,
-                "comment describes the edit, not the code ('added/changed/as requested…')",
+                "comment describes the edit, not the code ('as requested', 'the previous version'…)",
                 "Delete this comment. Edit history belongs in the commit message, not in the source.",
+            )
+        # doc comments open with the symbol name by convention ("Now returns
+        # the current time…" for a func named Now) — opener tier skips them
+        elif c.kind is not Kind.DOC and _CHANGE_START_RE.match(head):
+            yield _finding(
+                "UC003",
+                Severity.WARN,
+                c,
+                "comment starts like edit narration ('changed/simplified/now uses…')",
+                "If this describes the edit, delete it; history belongs in the commit message. "
+                "If it describes current behavior, reword in present tense ('Uses X because…').",
             )
 
 

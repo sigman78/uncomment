@@ -15,13 +15,15 @@ from .model import Kind
 _COMMON = [
     r"^#\s*(region|endregion)\b",                # IDE folding markers
     r"^(LCOV|GCOV|GCOVR)_EXCL_\w+",              # coverage exclusions
-    r"^coverage[:\s]+(ignore|off|on|disable|enable)\b",
+    r"^coverage:(ignore|off|on)(-line|-start|-end|-file)?\b",   # dart-style, no free prose
     r"^NOSONAR\b",
     r"(?i)^falls?[ -]?thr(ough|u)\.?$",          # compiler fallthrough hint
 ]
 
 _C_FAMILY = [
-    r"^NOLINT(NEXTLINE|BEGIN|END)?\b",           # clang-tidy
+    # clang-tidy: bare, or with a (category); "NOLINT: <prose>" is not a real
+    # form and stays judged so narration cannot hide behind it
+    r"^NOLINT(NEXTLINE|BEGIN|END)?(?!\s*:)\b",
     r"^clang-format\s+(on|off)\b",
     r"^cppcheck-suppress\b",
     r"^IWYU pragma:",

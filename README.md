@@ -38,10 +38,18 @@ ASCII for legacy terminals and log processors.
 **`check`** scans every comment in the given files/directories.
 
 **`gate`** is the harness workflow: it compares against a baseline — a
-directory, a single file, or `git:REF` — and only judges comments that do not
-exist in the baseline (matched by normalized content, so moved comments stay
-silent). It also computes a *comment flood* signal (`UC100`): when an edit adds
-far more comment lines than code lines, that alone is an error.
+directory, a single file, or `git:REF` — and only judges comments that are
+genuinely new. Matching is staged so ordinary edits are never re-judged:
+exact match within the file, then across the other scanned files (cross-file
+moves), then against the rest of the baseline tree when a file has no
+counterpart (renames), and finally fuzzy (`baseline-similarity`, default
+0.85), so typo fixes and light rewording of an existing comment do not count
+as new.
+
+The *comment flood* signal (`UC100`) counts only **noisy** new comment lines —
+new comments that triggered at least one finding. Adding a license header,
+API docs, or clean WHY-comments never floods; fourteen lines of narration
+still does.
 
 ```console
 uncomment gate src/parser.c --baseline git:main --format agent
@@ -64,7 +72,7 @@ uncomment gate src/parser.c --baseline git:main --format agent
 |-------|----------|---------|
 | UC001 | warn | comment restates the adjacent code (word-overlap vs. identifiers) |
 | UC002 | warn | process narration: "now we…", "first,…", "step 1", numbered steps |
-| UC003 | error | edit narration: "added/changed/fixed X", "as requested", "the previous version" |
+| UC003 | error/warn | edit narration, in two evidence tiers: explicit edit context ("as requested", "the previous version") is an error; a past-tense opener alone ("Simplified X", "Now uses Y") is a warning |
 | UC004 | warn | banner / divider comments (`// ======…`) |
 | UC005 | warn | commented-out code |
 | UC006 | warn | function body saturated with comments (default: >40% and ≥4 lines) |
@@ -74,7 +82,7 @@ uncomment gate src/parser.c --baseline git:main --format agent
 | UC010 | warn | boilerplate labels: "// imports", "// helpers", "// end of loop" |
 | UC011 | info | TODO/FIXME without owner or ticket |
 | UC012 | warn | emoji/decorative symbols in comments; with `ascii-comments = true`, any non-ASCII character |
-| UC100 | error | (gate only) comment flood: edit adds far more comment lines than code |
+| UC100 | error | (gate only) comment flood: edit adds far more *noisy* comment lines than code |
 | STE01 | info | sentence over 20 words (ASD-STE100 style) |
 | STE02 | info | passive voice |
 | STE03 | info | non-simple wording ("utilize" → use, "in order to" → to, …) |
@@ -98,6 +106,26 @@ compiletest markers, coverage exclusions (`LCOV_EXCL_*`), `NOSONAR`,
 fallthrough hints, and `#region`/`#endregion`. Add project-specific ones via
 `directive-patterns` in the config.
 
+The exemption is per-line and syntax-checked so noise cannot hide behind it:
+a multi-line block comment is only exempt when it contains nothing but the
+directive, and pseudo-forms like `NOLINT: <prose>` or `coverage: ignore --
+<prose>` are judged like any other comment.
+
+**Disagree with a finding?** Suppress it in place, auditable and scoped:
+
+```c
+int x = parse();  // retried upstream, so failure here is fine uncomment-ignore[UC009]: reviewed
+
+// uncomment-ignore[UC005]: kept as a worked example for the FFI docs
+// int old = compute();
+// use(old);
+```
+
+`uncomment-ignore[RULE,RULE]: reason` inside a comment suppresses those rules
+for it; a standalone marker comment covers the comment or line directly below.
+Without a rule list it suppresses everything in its target. Markers are never
+judged and never counted by the gate.
+
 The STE rules are wording guidance inspired by ASD-STE100 (Simplified
 Technical English): short sentences, active voice, one simple word per
 meaning. They never gate by default; raise them via config if you want them to.
@@ -117,7 +145,8 @@ unicode-output = true              # false = ASCII-only tool output (same as --a
 max-function-comment-ratio = 0.4   # UC006
 doc-migration-lines = 12           # UC008
 max-trailing-chars = 60            # UC009
-flood-ratio = 0.75                 # UC100: new comment lines / new code lines
+baseline-similarity = 0.85         # gate: this similar to baseline = same comment
+flood-ratio = 0.75                 # UC100: noisy new comment lines / new code lines
 flood-min-lines = 12
 ste-max-sentence-words = 20
 max-hints-per-rule = 8             # collapse repetitive info hints per file
