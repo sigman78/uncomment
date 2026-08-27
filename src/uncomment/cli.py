@@ -33,7 +33,7 @@ def discover_files(paths: list[Path], cfg=None) -> list[Path]:
     .git) are pruned without being walked. Include/exclude globs, gitignore,
     and generated-file markers filter walked trees; a file named explicitly
     always scans. Duplicates are returned once."""
-    from .filtering import drop_gitignored, is_generated, matches_any, selected
+    from .filtering import drop_gitignored, is_cachedir_tagged, is_generated, matches_any, selected
 
     files: list[Path] = []
     seen: set[Path] = set()
@@ -51,6 +51,16 @@ def discover_files(paths: list[Path], cfg=None) -> list[Path]:
         elif path.is_dir():
             walked: list[Path] = []
             for dirpath, dirnames, filenames in os.walk(path):
+                # a signed CACHEDIR.TAG marks the whole tree as tool-made
+                # cache; scanning a tagged dir AS the root remains intent
+                if (
+                    "CACHEDIR.TAG" in filenames
+                    and Path(dirpath) != path
+                    and is_cachedir_tagged(Path(dirpath))
+                ):
+                    dirnames[:] = []
+                    continue
+
                 def rel_of(name: str) -> str:
                     return (Path(dirpath) / name).relative_to(path).as_posix()
 

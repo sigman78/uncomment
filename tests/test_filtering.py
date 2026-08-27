@@ -90,6 +90,31 @@ def test_generated_markers(tmp_path):
     assert len(kept) == 3
 
 
+CACHEDIR_TAG = "Signature: 8a477f597d28d172789f06886806bc55\n# created by tool\n"
+
+
+def test_cachedir_tag_prunes_tagged_tree(tmp_path):
+    root = _tree(tmp_path, {
+        "kept.js": "const a = 1;\n",
+        "toolcache/CACHEDIR.TAG": CACHEDIR_TAG,
+        "toolcache/deep/c.js": "const c = 1;\n",
+        "fakecache/CACHEDIR.TAG": "just a file with that name\n",
+        "fakecache/d.js": "const d = 1;\n",
+    })
+    found = discover_files([root], Config(respect_gitignore=False))
+    # signed tag prunes; an unsigned file named CACHEDIR.TAG does not
+    assert _names(found, root) == {"kept.js", "fakecache/d.js"}
+
+
+def test_tagged_dir_as_scan_root_still_scans(tmp_path):
+    root = _tree(tmp_path, {
+        "cache/CACHEDIR.TAG": CACHEDIR_TAG,
+        "cache/a.js": "const a = 1;\n",
+    }) / "cache"
+    found = discover_files([root], Config(respect_gitignore=False))
+    assert _names(found, root) == {"a.js"}
+
+
 def test_respect_gitignore(tmp_path):
     if shutil.which("git") is None:
         pytest.skip("git not available")

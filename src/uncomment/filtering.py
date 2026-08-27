@@ -57,6 +57,21 @@ def is_generated(path: Path) -> bool:
     return any(marker in lower for marker in _GENERATED_ANY_CASE)
 
 
+# Cache Directory Tagging Specification (bford.info/cachedir): tools like
+# cargo, uv, pip, and pytest drop a signed CACHEDIR.TAG into the caches they
+# create. The signature check keeps an ordinary file that happens to be named
+# CACHEDIR.TAG from hiding a whole tree.
+_CACHEDIR_SIG = b"Signature: 8a477f597d28d172789f06886806bc55"
+
+
+def is_cachedir_tagged(directory: Path) -> bool:
+    try:
+        with open(directory / "CACHEDIR.TAG", "rb") as fh:
+            return fh.read(len(_CACHEDIR_SIG)) == _CACHEDIR_SIG
+    except OSError:
+        return False
+
+
 def _inside_git_repo(root: Path) -> bool:
     resolved = root.resolve()
     return any((d / ".git").exists() for d in [resolved, *resolved.parents])

@@ -67,8 +67,13 @@ outside a repository it is a no-op — filtering fails open, never silently
 emptying a scan), and `skip-generated` skips files whose first 2KB carry a
 generated-code marker (`DO NOT EDIT` — matched case-sensitively so prose
 "do not edit this list" never hides a file — `@generated`, "automatically
-generated"). Together they make `uncomment check .` behave sensibly out of
-the box on real trees full of build output and codegen.
+generated"). Directories carrying a signed `CACHEDIR.TAG` (the
+[Cache Directory Tagging Specification](https://bford.info/cachedir/), which
+cargo, uv, pip, and pytest write into the caches they create) are always
+pruned — the signature is verified, so an ordinary file named CACHEDIR.TAG
+never hides a tree, and scanning a tagged directory as the root still works.
+Together these make `uncomment check .` behave sensibly out of the box on
+real trees full of build output and codegen.
 
 ## disable and severity
 
