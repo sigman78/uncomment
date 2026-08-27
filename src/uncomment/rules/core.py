@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterable
 
 from ..config import Config
+from ..languages import is_interface_file
 from ..model import Attachment, Comment, Finding, Kind, Severity, SourceFile
 from ..textutil import first_line, overlap_ratio
 from . import is_license_header, rule
@@ -42,7 +43,7 @@ def restates_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if c.kind is Kind.DOC or c.attachment not in (Attachment.PRECEDING, Attachment.TRAILING):
             continue
-        if c.line_count > 2 or c.word_count < 2 or not c.attached_code:
+        if c.line_count > 4 or c.word_count < 2 or not c.attached_code:
             continue
         if _WHY_RE.search(c.content) or _TODO_RE.search(c.content):
             continue
@@ -63,6 +64,9 @@ _NARRATION_START_RE = re.compile(
     re.IGNORECASE,
 )
 _STEP_NUMBER_RE = re.compile(r"^\d+[.)]\s+\w")
+# for lines after the first, only unambiguous narration counts — a wrapped
+# sentence may legitimately continue onto a line starting with "we"
+_NARRATION_CONT_RE = re.compile(r"^(now,? we |first,? we |then we |next,? we |finally,? we |step \d)", re.IGNORECASE)
 
 
 @rule(
@@ -77,8 +81,16 @@ def narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         # the current time…"), which collides with narration openers — skip them
         if c.kind is Kind.DOC or is_license_header(c):
             continue
-        head = c.content.splitlines()[0] if c.content else ""
-        if _NARRATION_START_RE.match(head) or (c.in_function and _STEP_NUMBER_RE.match(head)):
+        # a WHY comment that happens to open with "We cannot… because…" is the
+        # kind of comment this tool asks for — leave it alone
+        if _WHY_RE.search(c.content):
+            continue
+        head, *rest = c.content.splitlines() or [""]
+        if (
+            _NARRATION_START_RE.match(head)
+            or (c.in_function and _STEP_NUMBER_RE.match(head))
+            or any(_NARRATION_CONT_RE.match(line) or (c.in_function and _STEP_NUMBER_RE.match(line)) for line in rest)
+        ):
             yield _finding(
                 "UC002",
                 Severity.WARN,
@@ -150,17 +162,28 @@ def change_narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 
 
 _BANNER_CHARS_RE = re.compile(r"[-=*~_#/]{8,}")
+_BOX_BORDER_RE = re.compile(r"^[+|][-+=| ]{6,}[+|]$")
+
+
+def _is_diagram(content: str) -> bool:
+    """ASCII tables and box diagrams share characters with banners but carry
+    real information — keep them."""
+    for line in content.splitlines():
+        stripped = line.strip()
+        if _BOX_BORDER_RE.match(stripped) or stripped.count("|") >= 2:
+            return True
+    return False
 
 
 @rule(
     "UC004",
     "banner",
     Severity.WARN,
-    "Decorative divider / section banner comment.",
+    "Decorative divider / section banner comment (ASCII tables and diagrams are kept).",
 )
 def banner(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
-        if is_license_header(c):
+        if is_license_header(c) or _is_diagram(c.content):
             continue
         for line in c.content.splitlines():
             if _BANNER_CHARS_RE.search(line) and len(line.split()) <= 5:
@@ -179,7 +202,7 @@ _CODEISH_RES = [
     re.compile(r"^\s*[{}]\s*$"),
     re.compile(r"^\s*(if|for|while|switch|return|import|export|let|const|var|fn|func|def|pub|static|struct|class|case|else|try|catch)\b.*[;{()=:]"),
     re.compile(r"^\s*#\s*(include|define|if|ifdef|ifndef|endif|pragma)\b"),
-    re.compile(r"^\s*[\w.\[\]:>*&-]+\s*\([^)]*\)\s*;?\s*$"),
+    re.compile(r"^\s*[\w.\[\]:>*&-]+\s*\(.*\)\s*;?\s*$"),  # calls, incl. chained
     re.compile(r"^\s*[\w.\[\]]+\s*[-+*/|&^:]?=\s*[^=]"),
     re.compile(r"=>|->\s*\w|\)\s*{"),
     # bare one-operand statements: 'return result', 'break', 'continue'
@@ -188,8 +211,15 @@ _CODEISH_RES = [
 ]
 
 
+# "lo = first index that might match;" is a prose invariant sketch, not code:
+# an assignment whose right side is three or more plain words
+_PROSE_ASSIGN_RE = re.compile(r"^\s*\w+\s*=\s*[A-Za-z]+(\s+[A-Za-z]+){2,}\s*[.;]?\s*$")
+
+
 def _looks_like_code(line: str) -> bool:
     if not line.strip():
+        return False
+    if _PROSE_ASSIGN_RE.match(line):
         return False
     return any(rx.search(line) for rx in _CODEISH_RES)
 
@@ -208,8 +238,19 @@ def commented_out_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         if not lines:
             continue
         codeish = sum(1 for ln in lines if _looks_like_code(ln))
+        # a one-line formula that mirrors the adjacent code ("// x = r * cos(t)"
+        # above "return r * cos(t);") is a restatement — UC001's finding, not
+        # dead code
+        single_restates = (
+            len(lines) == 1
+            and c.attached_code
+            and overlap_ratio(c.content, c.attached_code) >= cfg.restate_overlap
+        )
         if (len(lines) >= 2 and codeish / len(lines) >= cfg.code_line_fraction and codeish >= 2) or (
-            len(lines) == 1 and _looks_like_code(lines[0]) and not _TODO_RE.search(lines[0])
+            len(lines) == 1
+            and _looks_like_code(lines[0])
+            and not _TODO_RE.search(lines[0])
+            and not single_restates
         ):
             yield _finding(
                 "UC005",
@@ -227,23 +268,24 @@ def commented_out_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     "Function body is saturated with comments.",
 )
 def function_density(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
-    for fn in sf.functions:
-        interior = [
-            c
-            for c in sf.comments
-            if c.in_function and fn.start_line < c.start_line <= fn.end_line
-        ]
-        # attribute each comment to its innermost function only
-        interior = [
-            c
-            for c in interior
-            if not any(
-                other is not fn and other.start_line >= fn.start_line and other.end_line <= fn.end_line
-                and other.start_line < c.start_line <= other.end_line
-                for other in sf.functions
-            )
-        ]
-        comment_lines = sum(c.line_count for c in interior)
+    if not sf.functions:
+        return
+    # attribute each interior comment to its innermost enclosing function once
+    comment_lines_of: dict[int, int] = {}
+    spans = [(fn.start_line, fn.end_line, fn.end_line - fn.start_line) for fn in sf.functions]
+    for c in sf.comments:
+        if not c.in_function:
+            continue
+        best = None
+        best_size = None
+        for idx, (start, end, size) in enumerate(spans):
+            if start < c.start_line <= end and (best_size is None or size < best_size):
+                best, best_size = idx, size
+        if best is not None:
+            comment_lines_of[best] = comment_lines_of.get(best, 0) + c.line_count
+
+    for idx, fn in enumerate(sf.functions):
+        comment_lines = comment_lines_of.get(idx, 0)
         if (
             comment_lines >= cfg.min_interior_comment_lines
             and fn.body_line_count > 0
@@ -263,11 +305,18 @@ def function_density(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
                     "Strip the play-by-play comments from this function. Keep at most a short WHY note "
                     "per non-obvious block; if the logic needs this much explanation, simplify or split it."
                 ),
-                excerpt=fn.name,
             )
 
 
-_DOC_TAG_RE = re.compile(r"(@param|@returns?|@throws|@arg|Args:|Returns:|Raises:|# Arguments|# Errors|# Panics|# Safety)", re.IGNORECASE)
+# structured API-doc markers: JSDoc/Doxygen tags (@ or backslash form) and
+# rustdoc's conventional sections. A doc with these is documentation doing its
+# job, not guide prose that wandered into the code.
+_DOC_TAG_RE = re.compile(
+    r"[@\\](t?param|returns?|retval|throws?|arg|brief|details|note|warning|see|sa|since"
+    r"|ingroup|defgroup|addtogroup|copydoc|deprecated|exception|pre|post|file|invariant)\b"
+    r"|Args:|Returns:|Raises:|# Arguments|# Errors|# Panics|# Safety|# Examples",
+    re.IGNORECASE,
+)
 
 
 @rule(
@@ -333,6 +382,14 @@ def doc_migration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
                 "Move guide-level content to README/docs or the module doc; keep a one-paragraph summary here.",
             )
         elif c.kind is Kind.DOC:
+            # interface files (.h, .d.ts) exist to carry API docs — never
+            # suggest moving documentation out of them
+            if is_interface_file(sf.path):
+                continue
+            # a structured doc (Doxygen/JSDoc tags, rustdoc sections) is
+            # documentation in its right place unless it grows into a book
+            if _DOC_TAG_RE.search(c.content) and c.line_count < 2 * cfg.doc_migration_lines:
+                continue
             if _SECTION_RE.search(c.content) or c.line_count >= 2 * cfg.doc_migration_lines:
                 yield _finding(
                     "UC008",

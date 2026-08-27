@@ -103,6 +103,13 @@ EXTENSIONS: dict[str, LangSpec] = {
 
 COMMENT_NODE_TYPES = frozenset({"comment", "line_comment", "block_comment"})
 
+# files whose purpose is the public interface: API documentation BELONGS here
+_INTERFACE_SUFFIXES = (".h", ".hpp", ".hh", ".hxx", ".d.ts", ".d.mts", ".d.cts")
+
+
+def is_interface_file(path: str) -> bool:
+    return path.lower().endswith(_INTERFACE_SUFFIXES)
+
 
 def spec_for_path(path: str) -> LangSpec | None:
     from pathlib import Path

@@ -7,6 +7,8 @@ Exit codes: 0 = clean (or below fail threshold), 1 = gated findings,
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -27,7 +29,8 @@ SKIP_DIRS = frozenset(
 def discover_files(paths: list[Path]) -> list[Path]:
     """Supported source files under the given paths. Skip-dirs apply only to
     directories *below* a scanned root, so a project living inside a directory
-    named `build` or `vendor` still scans. Duplicates are returned once."""
+    named `build` or `vendor` still scans, and skipped trees (node_modules,
+    .git) are pruned without being walked. Duplicates are returned once."""
     files: list[Path] = []
     seen: set[Path] = set()
 
@@ -42,13 +45,11 @@ def discover_files(paths: list[Path]) -> list[Path]:
             if path.suffix.lower() in EXTENSIONS:
                 add(path)
         elif path.is_dir():
-            for p in sorted(path.rglob("*")):
-                if not p.is_file() or p.suffix.lower() not in EXTENSIONS:
-                    continue
-                rel_dirs = set(p.relative_to(path).parts[:-1])
-                if rel_dirs & SKIP_DIRS:
-                    continue
-                add(p)
+            for dirpath, dirnames, filenames in os.walk(path):
+                dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+                for fname in sorted(filenames):
+                    if Path(fname).suffix.lower() in EXTENSIONS:
+                        add(Path(dirpath) / fname)
     return files
 
 
@@ -123,13 +124,34 @@ def cmd_gate(args) -> int:
     return _emit_and_exit(result.findings, stats, args, cfg)
 
 
+# gate-only signals are synthesized in gate.py, not registered as rules
+_GATE_RULES = [
+    ("UC100", "error", "comment-flood (gate only)",
+     "Edit adds far more noisy comment lines than code lines relative to the baseline."),
+    ("UC101", "warn", "comment-amplification (gate only)",
+     "Edit multiplies a file's prose comments — the 'sees comments, writes more comments' pattern."),
+]
+
+
 def cmd_rules(args) -> int:
+    if args.format == "json":
+        doc = [
+            {"id": r.id, "severity": r.severity.name.lower(), "title": r.title,
+             "doc": r.doc, "gate_only": False}
+            for r in all_rules()
+        ] + [
+            {"id": rid, "severity": sev, "title": title, "doc": doc_text, "gate_only": True}
+            for rid, sev, title, doc_text in _GATE_RULES
+        ]
+        print(json.dumps(doc, indent=2))
+        return 0
     for r in all_rules():
         print(f"{r.id}  [{r.severity.name.lower():5}]  {r.title}")
         if r.doc:
             print(f"       {r.doc}")
-    print("UC100  [error]  comment-flood (gate mode only)")
-    print("       Edit adds far more comment lines than code lines relative to the baseline.")
+    for rid, sev, title, doc_text in _GATE_RULES:
+        print(f"{rid}  [{sev:5}]  {title}")
+        print(f"       {doc_text}")
     return 0
 
 
@@ -169,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     p_gate.set_defaults(fn=cmd_gate)
 
     p_rules = sub.add_parser("rules", help="list rules")
+    p_rules.add_argument("--format", choices=["text", "json"], default="text")
     p_rules.set_defaults(fn=cmd_rules)
 
     args = parser.parse_args(argv)
