@@ -48,7 +48,8 @@ class Comment:
     start_line: int           # 1-based, inclusive
     end_line: int             # 1-based, inclusive
     col: int                  # 0-based column of the first marker
-    attached_code: str = ""   # code on the same line (trailing) or first line below (preceding)
+    # code on the same line (trailing) or first line below (preceding)
+    attached_code: str = ""
     in_function: bool = False
     function_name: str = ""
     is_directive: bool = False  # linter/compiler control comment; never judged
@@ -81,7 +82,7 @@ class SourceFile:
     comments: list[Comment] = field(default_factory=list)
     functions: list[FunctionInfo] = field(default_factory=list)
     code_line_count: int = 0      # lines with code on them (comment-only lines excluded)
-    comment_line_count: int = 0   # lines occupied by comments
+    comment_line_count: int = 0   # docstrings and markers count too
 
 
 @dataclass

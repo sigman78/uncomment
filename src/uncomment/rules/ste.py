@@ -90,7 +90,7 @@ def passive_voice(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             )
 
 
-# phrase -> approved replacement (checked before single words)
+# maps a phrase to its approved replacement; phrases match before single words
 PHRASES: dict[str, str] = {
     "in order to": "to",
     "prior to": "before",

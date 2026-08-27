@@ -62,8 +62,8 @@ class Hunk:
 
 @dataclass
 class FilePatch:
-    old_path: str | None = None   # None = file created (/dev/null)
-    new_path: str | None = None   # None = file deleted
+    old_path: str | None = None   # missing when the diff creates the file
+    new_path: str | None = None   # missing when the diff deletes the file
     hunks: list[Hunk] = field(default_factory=list)
     binary: bool = False
 

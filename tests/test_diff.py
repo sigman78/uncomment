@@ -80,7 +80,7 @@ def test_parse_git_diff_sections():
 
 def test_parse_mnemonic_prefixes_and_quoted_paths():
     diff = (
-        "diff --git i/a.js w/a.js\n"       # diff.mnemonicPrefix = true
+        "diff --git i/a.js w/a.js\n"       # the diff.mnemonicPrefix header form
         "index 1111111..2222222 100644\n"
         "--- i/a.js\n"
         "+++ w/a.js\n"
