@@ -83,9 +83,14 @@ class _RawComment:
 
 def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
     parser = get_parser(spec.grammar)
+    source = source.removeprefix(chr(0xFEFF))  # a BOM would shift every byte column
     data = source.encode("utf-8")
     tree = parser.parse(data)
-    lines = source.splitlines()
+    # tree-sitter rows split on \n only and its columns are BYTE offsets, so
+    # all row/column math happens on byte lines; strings are decoded at the
+    # edges. Python's splitlines() would desync rows on \f or U+2028.
+    byte_lines = data.split(b"\n")
+    lines = [bl.rstrip(b"\r").decode("utf-8", "replace") for bl in byte_lines]
 
     raw_comments: list[_RawComment] = []
     functions: list[FunctionInfo] = []
@@ -121,35 +126,35 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
 
     raw_comments.sort(key=lambda c: (c.start_row, c.start_col))
 
-    # rows occupied by comments, and per-row comment span masks
+    # rows occupied by comments, and per-row comment span masks (byte offsets)
     comment_rows: set[int] = set()
     masks: dict[int, list[tuple[int, int]]] = {}
     for rc in raw_comments:
         for row in range(rc.start_row, rc.end_row + 1):
             comment_rows.add(row)
-            line_len = len(lines[row]) if row < len(lines) else 0
+            line_len = len(byte_lines[row]) if row < len(byte_lines) else 0
             a = rc.start_col if row == rc.start_row else 0
             b = rc.end_col if row == rc.end_row else line_len
             masks.setdefault(row, []).append((a, b))
 
     code_rows: set[int] = set()
-    for row, line in enumerate(lines):
-        chars = list(line)
+    for row, bline in enumerate(byte_lines):
+        buf = bytearray(bline)
         for a, b in masks.get(row, ()):
-            for i in range(a, min(b, len(chars))):
-                chars[i] = " "
-        if "".join(chars).strip():
+            for i in range(a, min(b, len(buf))):
+                buf[i] = 0x20
+        if bytes(buf).strip():
             code_rows.add(row)
 
     first_code_row = min(code_rows) if code_rows else None
 
     def code_before(rc: _RawComment) -> str:
-        line = lines[rc.start_row] if rc.start_row < len(lines) else ""
-        return line[: rc.start_col].strip()
+        bline = byte_lines[rc.start_row] if rc.start_row < len(byte_lines) else b""
+        return bline[: rc.start_col].decode("utf-8", "replace").strip()
 
     def code_after(rc: _RawComment) -> str:
-        line = lines[rc.end_row] if rc.end_row < len(lines) else ""
-        return line[rc.end_col:].strip()
+        bline = byte_lines[rc.end_row] if rc.end_row < len(byte_lines) else b""
+        return bline[rc.end_col:].decode("utf-8", "replace").strip()
 
     # ---- group adjacent line comments into logical comments ----
     groups: list[list[_RawComment]] = []
@@ -291,5 +296,5 @@ def extract_file(path: str | Path) -> SourceFile | None:
     spec = spec_for_path(str(p))
     if spec is None:
         return None
-    source = p.read_text(encoding="utf-8", errors="replace")
+    source = p.read_text(encoding="utf-8-sig", errors="replace")
     return extract_source(str(p), source, spec)

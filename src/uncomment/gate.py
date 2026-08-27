@@ -114,7 +114,7 @@ def _baseline_source(baseline: str, new_path: Path, new_root: Path) -> tuple[str
             return None, None
         try:
             out = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=top, capture_output=True, check=True)
-            return out.stdout.decode("utf-8", "replace"), rel
+            return out.stdout.decode("utf-8-sig", "replace"), rel
         except subprocess.CalledProcessError:
             return None, rel
     base = Path(baseline)
@@ -127,7 +127,7 @@ def _baseline_source(baseline: str, new_path: Path, new_root: Path) -> tuple[str
             rel = Path(new_path.name)
         candidate = base / rel
     if candidate.is_file():
-        return candidate.read_text(encoding="utf-8", errors="replace"), candidate.resolve()
+        return candidate.read_text(encoding="utf-8-sig", errors="replace"), candidate.resolve()
     return None, candidate.resolve()
 
 
@@ -162,14 +162,14 @@ def _tree_norms(baseline: str, anchor: Path, consumed: set, cfg: Config) -> Coun
                 out = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=top, capture_output=True, check=True)
             except subprocess.CalledProcessError:
                 continue
-            absorb(rel, out.stdout.decode("utf-8", "replace"))
+            absorb(rel, out.stdout.decode("utf-8-sig", "replace"))
     else:
         base = Path(baseline)
         if base.is_dir():
             for p in sorted(base.rglob("*")):
                 if not p.is_file() or p.suffix.lower() not in EXTENSIONS or p.resolve() in consumed:
                     continue
-                absorb(str(p), p.read_text(encoding="utf-8", errors="replace"))
+                absorb(str(p), p.read_text(encoding="utf-8-sig", errors="replace"))
     return pool
 
 
