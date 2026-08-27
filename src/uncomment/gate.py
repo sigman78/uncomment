@@ -28,8 +28,8 @@ from pathlib import Path
 from .config import Config
 from .extract import extract_file, extract_source
 from .languages import EXTENSIONS, spec_for_path
-from .model import Comment, Finding, Severity, SourceFile, ToolError
-from .rules import run_rules, visible_comments
+from .model import Comment, Finding, Kind, Severity, SourceFile, ToolError
+from .rules import is_license_header, run_rules, visible_comments
 
 _WS_RE = re.compile(r"\s+")
 
@@ -87,6 +87,7 @@ class _FileState:
     unmatched: list[Comment]
     added_code_lines: int
     had_counterpart: bool
+    old_prose_lines: int = 0
 
 
 def _git_repo_top(anchor_dir: Path) -> Path | None:
@@ -196,6 +197,16 @@ def _consume_fuzzy(comments: list[Comment], pool: Counter, threshold: float) -> 
     return leftover
 
 
+def _prose_comments(comments: list[Comment]) -> list[Comment]:
+    """Comments that are neither documentation nor license text — the kind an
+    over-eager agent multiplies."""
+    return [c for c in comments if c.kind is not Kind.DOC and not is_license_header(c)]
+
+
+def _prose_lines(comments: list[Comment]) -> int:
+    return sum(c.line_count for c in _prose_comments(comments))
+
+
 def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
     new_spans = [(c.start_line, c.end_line) for c in st.unmatched]
 
@@ -203,11 +214,44 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
         return any(not (b < f.line or a > f.end_line) for a, b in new_spans)
 
     findings = [f for f in run_rules(st.sf, cfg) if touches_new(f)]
+    rule_findings = list(findings)  # per-comment findings only; UC100's noise
+    # measure must not count the aggregate UC101 signal below
+
+    # UC101 comment amplification: the "sees comments, writes more comments"
+    # pattern. Fires on prose volume alone, so elaboration sprees are caught
+    # even when every individual comment evades the per-comment rules.
+    new_prose = _prose_lines(st.unmatched)
+    if (
+        st.had_counterpart
+        and st.old_prose_lines > 0
+        and new_prose >= cfg.growth_min_lines
+        and new_prose >= cfg.growth_factor * st.old_prose_lines
+    ):
+        prose_comments = _prose_comments(st.unmatched)
+        findings.append(
+            Finding(
+                rule="UC101",
+                severity=Severity.WARN,
+                path=str(st.path),
+                line=prose_comments[0].start_line,
+                end_line=prose_comments[-1].end_line,
+                message=(
+                    f"comment amplification: {new_prose} new prose comment lines in a file "
+                    f"that had {st.old_prose_lines}"
+                ),
+                action=(
+                    "This edit multiplied the file's comments. Existing comments are not an invitation "
+                    "to add more: re-read every comment you added and keep only those stating a WHY the "
+                    "code cannot express. Delete elaborations, restatements, and section labels."
+                ),
+                excerpt="",
+            )
+        )
 
     # flood counts only noisy lines: new comments with at least one finding.
     # A license header or clean documentation never floods.
     def is_noisy(c: Comment) -> bool:
-        return any(not (c.end_line < f.line or c.start_line > f.end_line) for f in findings)
+        return any(not (c.end_line < f.line or c.start_line > f.end_line) for f in rule_findings)
 
     noisy_lines = sum(c.line_count for c in st.unmatched if is_noisy(c))
     if noisy_lines >= cfg.flood_min_lines and noisy_lines > cfg.flood_ratio * max(st.added_code_lines, 1):
@@ -249,11 +293,14 @@ def _gate(files: list[Path], baseline: str, cfg: Config, root_of) -> GateResult:
             consumed.add(identity)
         old_norms: Counter = Counter()
         old_code_lines = 0
+        old_prose_lines = 0
         if old_source is not None:
             spec = spec_for_path(str(f))
             old_sf = extract_source(str(f), old_source, spec)
-            old_norms = Counter(_norm(c) for c in visible_comments(old_sf, cfg))
+            old_visible = visible_comments(old_sf, cfg)
+            old_norms = Counter(_norm(c) for c in old_visible)
             old_code_lines = old_sf.code_line_count
+            old_prose_lines = _prose_lines(old_visible)
         unmatched = _consume_exact(visible_comments(sf, cfg), old_norms)
         cross_pool += old_norms  # leftovers feed cross-file matching
         states.append(
@@ -263,6 +310,7 @@ def _gate(files: list[Path], baseline: str, cfg: Config, root_of) -> GateResult:
                 unmatched=unmatched,
                 added_code_lines=max(0, sf.code_line_count - old_code_lines),
                 had_counterpart=old_source is not None,
+                old_prose_lines=old_prose_lines,
             )
         )
 

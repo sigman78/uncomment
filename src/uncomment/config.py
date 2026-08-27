@@ -42,6 +42,11 @@ class Config:
     # gate: comment flood (noisy new comment lines vs added code lines)
     flood_ratio: float = 0.75
     flood_min_lines: int = 12
+    # gate: comment amplification (UC101) — new prose comment lines added to a
+    # file that already had prose comments, even when each one evades the
+    # per-comment rules
+    growth_min_lines: int = 6
+    growth_factor: float = 1.0
     # STE wording
     ste_max_sentence_words: int = 20
     ste_max_paragraph_sentences: int = 6
