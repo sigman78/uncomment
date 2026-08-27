@@ -1,0 +1,5 @@
+# Keep checkouts byte-identical everywhere: the test corpus and its expected
+# findings depend on exact line content.
+* text=auto eol=lf
+*.png binary
+*.gif binary

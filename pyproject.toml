@@ -1,0 +1,25 @@
+[project]
+name = "uncomment"
+version = "0.1.0"
+description = "Lint and gate overly detailed comments introduced by coding agents"
+readme = "README.md"
+authors = [
+    { name = "SiGMan", email = "sigman@ioupg.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "tree-sitter>=0.26.0",
+    "tree-sitter-language-pack>=1.15.8",
+]
+
+[project.scripts]
+uncomment = "uncomment.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.30,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
