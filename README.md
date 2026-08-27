@@ -120,8 +120,10 @@ mis-judge comments.
 What is deliberately **not** flagged: license headers, module/package docs
 (Go `doc.go`, Rust `//!`), doc comments with real API content (params, errors,
 invariants), short WHY-comments ("because…", "workaround…", links), ASCII
-tables and box diagrams, prose invariant sketches, and anything already
-present in the baseline.
+tables and box diagrams, prose invariant sketches, product names that look
+like narration ("Let's Encrypt rate-limits renewals" is a fact, "let's
+encrypt the payload" is a story), and anything already present in the
+baseline.
 
 **Documentation in its rightful place stays.** Doxygen/JSDoc-tagged docs
 (`@brief`, `\param`, `@returns`…), rustdoc conventional sections
