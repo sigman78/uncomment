@@ -82,6 +82,9 @@ re-run the check. Comment policy:
 6. Long guide-level prose belongs in project docs or a doc comment, not inside code.
 7. Wording follows Simplified Technical English: short sentences (max 20 words),
    active voice, simple common words.
+8. API documentation on public interfaces (header files, exported symbols,
+   Doxygen/JSDoc/rustdoc) is WANTED — prune noise, never strip real docs.
+   Existing comments nearby are not an invitation to add more.
 
 When you delete a comment, delete only the comment; never change the code around it
 unless an item explicitly asks for it.

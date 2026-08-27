@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterable
 
 from ..config import Config
+from ..languages import is_interface_file
 from ..model import Attachment, Comment, Finding, Kind, Severity, SourceFile
 from ..textutil import first_line, overlap_ratio
 from . import is_license_header, rule
@@ -307,7 +308,15 @@ def function_density(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             )
 
 
-_DOC_TAG_RE = re.compile(r"(@param|@returns?|@throws|@arg|Args:|Returns:|Raises:|# Arguments|# Errors|# Panics|# Safety)", re.IGNORECASE)
+# structured API-doc markers: JSDoc/Doxygen tags (@ or backslash form) and
+# rustdoc's conventional sections. A doc with these is documentation doing its
+# job, not guide prose that wandered into the code.
+_DOC_TAG_RE = re.compile(
+    r"[@\\](t?param|returns?|retval|throws?|arg|brief|details|note|warning|see|sa|since"
+    r"|ingroup|defgroup|addtogroup|copydoc|deprecated|exception|pre|post|file|invariant)\b"
+    r"|Args:|Returns:|Raises:|# Arguments|# Errors|# Panics|# Safety|# Examples",
+    re.IGNORECASE,
+)
 
 
 @rule(
@@ -373,6 +382,14 @@ def doc_migration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
                 "Move guide-level content to README/docs or the module doc; keep a one-paragraph summary here.",
             )
         elif c.kind is Kind.DOC:
+            # interface files (.h, .d.ts) exist to carry API docs — never
+            # suggest moving documentation out of them
+            if is_interface_file(sf.path):
+                continue
+            # a structured doc (Doxygen/JSDoc tags, rustdoc sections) is
+            # documentation in its right place unless it grows into a book
+            if _DOC_TAG_RE.search(c.content) and c.line_count < 2 * cfg.doc_migration_lines:
+                continue
             if _SECTION_RE.search(c.content) or c.line_count >= 2 * cfg.doc_migration_lines:
                 yield _finding(
                     "UC008",
