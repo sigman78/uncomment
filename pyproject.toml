@@ -1,6 +1,6 @@
 [project]
 name = "uncomment"
-version = "0.6.1"
+version = "0.7.0"
 description = "Lint and gate overly detailed comments introduced by coding agents"
 readme = "README.md"
 license = "MIT"

@@ -182,6 +182,18 @@ for it; a standalone marker comment covers the comment or line directly below.
 Without a rule list it suppresses everything in its target. Markers are never
 judged and never counted by the gate.
 
+**Project vocabulary.** When the disagreement is about a word rather than a
+site, declare it once in `approved-terms`: product names and domain terms the
+wording rules (UC002 narration, UC003 edit narration, STE02 passive voice,
+STE03 vocabulary) must not judge. Occurrences are blanked out before those
+rules look at the text, so `# Fixed Income books settle T+1` stops reading
+like edit narration and a finance project can keep "leverage". Casing carries
+meaning: a term with an uppercase letter matches exactly (approving
+"Let's Encrypt" keeps "let's encrypt the payload" flagged as narration),
+while an all-lowercase term matches any case. Approved terms still count for
+the restatement rules (UC001/UC007) — approving a word never excuses a
+comment that repeats the code.
+
 The STE rules are wording guidance inspired by ASD-STE100 (Simplified
 Technical English): short sentences, active voice, one simple word per
 meaning. They never gate by default; raise them via config if you want them to.
@@ -210,6 +222,7 @@ ste-max-sentence-words = 20
 max-hints-per-rule = 8             # collapse repetitive info hints per file
 disable = ["STE02", "UC011"]       # rule ids or prefixes ("STE" disables all STE)
 directive-patterns = ["^MY-LINT:"] # extra tooling-directive regexes to exempt
+approved-terms = ["Let's Encrypt", "leverage"]  # vocabulary the wording rules skip
 
 [tool.uncomment.severity]          # promote/demote rules
 STE03 = "warn"
