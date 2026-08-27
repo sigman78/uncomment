@@ -72,7 +72,7 @@ def test_license_header_new_file_does_not_flood(tmp_path):
 
 
 def test_narration_flood_still_fires(tmp_path):
-    noise = "".join(f"// narrative filler line number {i} explaining nothing\n" for i in range(14))
+    noise = "".join(f"// then we run filler step number {i} of the plan\n" for i in range(14))
     new = _tree(tmp_path, "new", {"a.js": noise + "export function f() {\n  return 1;\n}\n"})
     old = _tree(tmp_path, "old", {"a.js": "export function f() {\n  return 1;\n}\n"})
     findings, _, _ = gate_file(new / "a.js", str(old), new, Config())

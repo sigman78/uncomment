@@ -78,9 +78,15 @@ def _severity_arg(name: str) -> Severity | None:
     return None if name == "never" else Severity.parse(name)
 
 
+# whether stdout could encode UTF-8 before main() reconfigured it; drives the
+# automatic ASCII fallback for legacy Windows consoles and cp125x pipes
+_STDOUT_WAS_UTF8 = True
+
+
 def _emit_and_exit(findings, stats, args, cfg) -> int:
     out = RENDERERS[args.format](findings, stats)
-    if args.ascii or not cfg.unicode_output:
+    unicode_ok = cfg.unicode_output if cfg.unicode_output is not None else _STDOUT_WAS_UTF8
+    if args.ascii or not unicode_ok:
         out = to_ascii(out)
     print(out)
     fail_on = _severity_arg(args.fail_on)
@@ -185,7 +191,13 @@ def _add_common(p: argparse.ArgumentParser, paths_required: bool = True) -> None
 
 def main(argv: list[str] | None = None) -> int:
     # Windows consoles and pipes often default to legacy codepages; findings
-    # quote source comments, so the output must survive any encoding.
+    # quote source comments, so the output must survive any encoding. The
+    # original encoding is remembered: a non-UTF-8 stdout means the CONSUMER
+    # is a legacy console/pipe, so output falls back to ASCII unless the
+    # config pins unicode-output explicitly.
+    global _STDOUT_WAS_UTF8
+    enc = getattr(sys.stdout, "encoding", None) or ""
+    _STDOUT_WAS_UTF8 = "utf" in enc.lower()
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")

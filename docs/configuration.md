@@ -15,8 +15,9 @@ max-function-comment-ratio = 0.4   # UC006
 min-interior-comment-lines = 4     # UC006: lines before density counts
 doc-migration-lines = 12           # UC008
 max-trailing-chars = 60            # UC009
+max-trailing-words = 10            # UC009
 ascii-comments = false             # UC012: true = flag ANY non-ASCII in comments
-unicode-output = true              # false = ASCII-only tool output (same as --ascii)
+unicode-output = true              # false = always ASCII; unset = automatic (see below)
 baseline-similarity = 0.85         # gate: this similar to baseline = same comment
 flood-ratio = 0.75                 # UC100: noisy new comment lines / new code lines
 flood-min-lines = 12
@@ -33,6 +34,11 @@ approved-terms = ["Let's Encrypt", "leverage"]  # vocabulary the wording rules s
 STE03 = "warn"
 UC004 = "info"
 ```
+
+When `unicode-output` is not set, the tool decides automatically: output
+falls back to ASCII when stdout was not UTF-8-capable at startup (legacy
+Windows consoles and cp125x pipes), so captured output never shows `…`/`—`
+as mojibake. Set it explicitly to pin either behavior.
 
 ## disable and severity
 

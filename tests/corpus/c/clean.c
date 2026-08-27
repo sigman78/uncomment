@@ -23,3 +23,18 @@ size_t safe_copy(char *dst, const char *src, size_t n) {
 }
 
 static int calibration = 1234; // NOLINT(readability-magic-numbers) constant taken from the sensor datasheet
+
+#include "keymap.h" /* HID key events -> ui_key_t */
+
+/**
+ * Maps a HID usage to the internal key code
+ * @param usage      HID usage id from the report descriptor
+ * @param modifiers  active modifier bitmask taken from byte 0
+ * @return internal key code, or KEY_NONE when the usage has no mapping
+ */
+int keymap_lookup(int usage, int modifiers);
+
+/**
+ * The caller must free the parsed report map when it is no longer needed.
+ */
+void *parse_report_map(const char *raw);

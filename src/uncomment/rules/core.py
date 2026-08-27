@@ -126,7 +126,9 @@ _CHANGE_INNER_RE = re.compile(
     r"\b(as requested|as discussed|as per (the )?(instructions?|request)"
     r"|per (the )?(user|reviewer|review|feedback)|in response to (the )?(review|feedback|request)"
     r"|this (change|edit|update|commit|patch)|the (old|previous|original) (implementation|version|code|logic)"
-    r"|no longer (needed|necessary|uses|needs|calls|requires|relies)"
+    # "no longer needed/necessary" is ownership/lifetime prose ("free the map
+    # when it's no longer needed") — only behavioral change forms count
+    r"|no longer (uses|calls|requires|relies)"
     r"|instead of the (old|previous)|was (removed|changed|renamed|moved) (in|to|from))\b",
     re.IGNORECASE,
 )
@@ -209,7 +211,9 @@ _CODEISH_RES = [
     re.compile(r"^\s*#\s*(include|define|if|ifdef|ifndef|endif|pragma)\b"),
     re.compile(r"^\s*[\w.\[\]:>*&-]+\s*\(.*\)\s*;?\s*$"),  # calls, incl. chained
     re.compile(r"^\s*[\w.\[\]]+\s*[-+*/|&^:]?=\s*[^=]"),
-    re.compile(r"=>|->\s*\w|\)\s*{"),
+    # attached arrows are member access (p->next); a SPACED arrow is mapping
+    # prose ("HID events -> ui_key_t") and must not read as code on its own
+    re.compile(r"\w->\w|\)\s*{"),
     # bare one-operand statements: 'return result', 'break', 'continue'
     re.compile(r"^\s*return\s+[\w.\[\]()\"']+\s*;?\s*$"),
     re.compile(r"^\s*(break|continue|pass)\s*;?\s*$"),
@@ -427,12 +431,17 @@ def trailing_length(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if c.attachment is not Attachment.TRAILING:
             continue
-        if len(c.text) > cfg.max_trailing_chars or c.word_count > 10:
+        over = []
+        if len(c.text) > cfg.max_trailing_chars:
+            over.append(f"{len(c.text)} chars (limit {cfg.max_trailing_chars})")
+        if c.word_count > cfg.max_trailing_words:
+            over.append(f"{c.word_count} words (limit {cfg.max_trailing_words})")
+        if over:
             yield _finding(
                 "UC009",
                 Severity.WARN,
                 c,
-                f"trailing comment is {len(c.text)} chars / {c.word_count} words",
+                "trailing comment is too long: " + ", ".join(over),
                 "Delete it if it repeats the code; otherwise move it to its own line above, shortened.",
             )
 
