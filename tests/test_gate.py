@@ -43,8 +43,8 @@ def test_only_new_comments_are_flagged(tmp_path):
 
     findings, sf, stats = gate_file(new_file, str(old_dir), new_dir, Config())
     rules = {f.rule for f in findings}
-    assert "UC003" in rules  # "Changed ... as requested"
-    assert "UC002" in rules  # "Then we ..."
+    assert "UC003" in rules  # the edit-narration line
+    assert "UC002" in rules  # the process-narration line
     # the pre-existing comment on line 1 must not produce findings
     assert all(f.line != 1 for f in findings)
     assert stats["new_comments"] == 2

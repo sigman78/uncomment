@@ -10,11 +10,14 @@ from dataclasses import dataclass, field
 class LangSpec:
     name: str                       # our canonical name
     grammar: str                    # tree-sitter-language-pack grammar name
+    line_marker: str = "//"         # "#" for Python files
     doc_line_prefixes: tuple[str, ...] = ()    # e.g. ///, //!
     doc_block_prefixes: tuple[str, ...] = ()   # e.g. /**, /*!
     function_nodes: frozenset[str] = frozenset()
     # node types whose preceding own-line comment is a doc comment by convention
     doc_by_convention_nodes: frozenset[str] = frozenset()
+    # node types whose body's first string statement is a doc comment (Python)
+    docstring_containers: frozenset[str] = frozenset()
     keywords: frozenset[str] = frozenset()
 
 
@@ -91,6 +94,18 @@ GO = LangSpec(
     ),
 )
 
+PY = LangSpec(
+    name="python",
+    grammar="python",
+    line_marker="#",
+    function_nodes=frozenset({"function_definition", "lambda"}),
+    docstring_containers=frozenset({"module", "function_definition", "class_definition"}),
+    keywords=frozenset(
+        "def class if elif else for while return import from as with try except finally raise "
+        "lambda pass break continue global nonlocal yield assert del not and or in is None True False self".split()
+    ),
+)
+
 EXTENSIONS: dict[str, LangSpec] = {
     ".c": C, ".h": C,
     ".cpp": CPP, ".cc": CPP, ".cxx": CPP, ".hpp": CPP, ".hh": CPP, ".hxx": CPP,
@@ -99,12 +114,13 @@ EXTENSIONS: dict[str, LangSpec] = {
     ".tsx": TSX,
     ".rs": RUST,
     ".go": GO,
+    ".py": PY, ".pyi": PY,
 }
 
 COMMENT_NODE_TYPES = frozenset({"comment", "line_comment", "block_comment"})
 
 # files whose purpose is the public interface: API documentation BELONGS here
-_INTERFACE_SUFFIXES = (".h", ".hpp", ".hh", ".hxx", ".d.ts", ".d.mts", ".d.cts")
+_INTERFACE_SUFFIXES = (".h", ".hpp", ".hh", ".hxx", ".d.ts", ".d.mts", ".d.cts", ".pyi")
 
 
 def is_interface_file(path: str) -> bool:

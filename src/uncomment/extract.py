@@ -22,7 +22,7 @@ _NAME_NODE_TYPES = frozenset(
 
 # a header comment directly above one of these lines documents the file, not the line
 _IMPORT_LINE_RE = re.compile(
-    r"^\s*(#\s*(include|pragma|ifndef|define)\b|import\b|package\b|using\b|use\b|extern crate\b|mod\b|module\b|['\"]use strict)"
+    r"^\s*(#\s*(include|pragma|ifndef|define)\b|import\b|from\b|package\b|using\b|use\b|extern crate\b|mod\b|module\b|['\"]use strict)"
 )
 
 
@@ -41,9 +41,26 @@ def _function_name(node) -> str:
     return "<anonymous>"
 
 
-def strip_markers(raw: str) -> str:
+def _trim_blank_edges(out: list[str]) -> str:
+    while out and not out[0]:
+        out.pop(0)
+    while out and not out[-1]:
+        out.pop()
+    return "\n".join(out)
+
+
+def strip_markers(raw: str, line_marker: str = "//") -> str:
     """Remove comment markers, keeping the human text."""
     out: list[str] = []
+    if line_marker == "#":
+        for line in raw.splitlines():
+            s = line.strip()
+            # one marker only: '#### section' keeps its banner characters and
+            # '#!' keeps the '!' so the shebang stays recognizable
+            if s.startswith("#"):
+                s = s[1:]
+            out.append(s.strip())
+        return _trim_blank_edges(out)
     for line in raw.splitlines():
         s = line.strip()
         for prefix in ("/*!", "/**", "/*", "//!", "///", "//"):
@@ -57,15 +74,23 @@ def strip_markers(raw: str) -> str:
             s = s[:-2]
         out.append(s.strip())
     # drop leading/trailing empty lines produced by /* and */ on their own lines
-    while out and not out[0]:
-        out.pop(0)
-    while out and not out[-1]:
-        out.pop()
-    return "\n".join(out)
+    return _trim_blank_edges(out)
+
+
+_DOCSTRING_QUOTE_RE = re.compile(r'^[rRuUbBfF]{0,3}("""|\'\'\'|"|\')')
+
+
+def strip_docstring_quotes(raw: str) -> str:
+    """Docstring content: quotes and prefix letters removed, lines stripped."""
+    m = _DOCSTRING_QUOTE_RE.match(raw)
+    body = raw[m.end():] if m else raw
+    if m and body.endswith(m.group(1)):
+        body = body[: -len(m.group(1))]
+    return _trim_blank_edges([ln.strip() for ln in body.splitlines()])
 
 
 class _RawComment:
-    __slots__ = ("text", "start_row", "start_col", "end_row", "end_col", "func_name", "in_function")
+    __slots__ = ("text", "start_row", "start_col", "end_row", "end_col", "func_name", "in_function", "docstring")
 
     def __init__(self, node, func_name: str, in_function: bool):
         self.text = node.text.decode("utf-8", "replace").rstrip("\r\n")
@@ -79,6 +104,7 @@ class _RawComment:
             self.end_col = 1 << 30
         self.func_name = func_name
         self.in_function = in_function
+        self.docstring: tuple[str, int] | None = None  # (container node type, signature row)
 
 
 def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
@@ -96,6 +122,8 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
     functions: list[FunctionInfo] = []
     # first named non-comment node starting at each row (outermost wins)
     row_first_node: dict[int, str] = {}
+    # docstring string-node id -> (container type, signature row, outer func context)
+    docstring_nodes: dict[int, tuple[str, int, str, bool]] = {}
 
     stack: list[tuple[object, str, bool]] = [(tree.root_node, "", False)]
     while stack:
@@ -103,8 +131,31 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
         if node.type in COMMENT_NODE_TYPES:
             raw_comments.append(_RawComment(node, func_name, in_func))
             continue
+        if node.id in docstring_nodes:
+            container_type, container_row, outer_func, outer_in = docstring_nodes[node.id]
+            rc = _RawComment(node, outer_func, outer_in)
+            rc.docstring = (container_type, container_row)
+            raw_comments.append(rc)
+            continue
         if node.is_named and node.type != "translation_unit":
             row_first_node.setdefault(node.start_point[0], node.type)
+        if spec.docstring_containers and node.type in spec.docstring_containers:
+            body = node if node.type == "module" else node.child_by_field_name("body")
+            for child in body.children if body is not None else ():
+                if child.type in COMMENT_NODE_TYPES:
+                    continue
+                # the grammar may or may not wrap the docstring statement
+                target = child if child.type == "string" else None
+                if (
+                    target is None
+                    and child.type == "expression_statement"
+                    and len(child.named_children) == 1
+                    and child.named_children[0].type == "string"
+                ):
+                    target = child.named_children[0]
+                if target is not None:
+                    docstring_nodes[target.id] = (node.type, node.start_point[0], func_name, in_func)
+                break  # only the first statement can be a docstring
         child_func, child_in = func_name, in_func
         if node.type in spec.function_nodes:
             name = _function_name(node)
@@ -159,13 +210,14 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
     # ---- group adjacent line comments into logical comments ----
     groups: list[list[_RawComment]] = []
     for rc in raw_comments:
-        is_line = rc.text.startswith("//")
+        is_line = rc.docstring is None and rc.text.startswith(spec.line_marker)
         trailing = bool(code_before(rc))
         if (
             groups
             and is_line
             and not trailing
-            and groups[-1][-1].text.startswith("//")
+            and groups[-1][-1].docstring is None
+            and groups[-1][-1].text.startswith(spec.line_marker)
             and not code_before(groups[-1][-1])
             and rc.start_row == groups[-1][-1].end_row + 1
             and rc.start_col == groups[-1][-1].start_col
@@ -173,7 +225,7 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
             # directive and suppression-marker lines never merge with prose,
             # so the prose part stays judged and the marker keeps its scope
             and _directive_line(rc.text, spec) == _directive_line(groups[-1][-1].text, spec)
-            and _marker_line(rc.text) == _marker_line(groups[-1][-1].text)
+            and _marker_line(rc.text, spec) == _marker_line(groups[-1][-1].text, spec)
         ):
             groups[-1].append(rc)
         else:
@@ -182,6 +234,31 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
     comments: list[Comment] = []
     for group in groups:
         first, last = group[0], group[-1]
+        if first.docstring is not None:
+            container_type, container_row = first.docstring
+            if container_type == "module":
+                attachment, attached = Attachment.FILE_HEADER, ""
+            else:
+                # the docstring documents the def/class line above it
+                attachment = Attachment.PRECEDING
+                attached = lines[container_row].strip() if container_row < len(lines) else ""
+            comments.append(
+                Comment(
+                    path=path,
+                    lang=spec.name,
+                    kind=Kind.DOC,
+                    attachment=attachment,
+                    text=first.text,
+                    content=strip_docstring_quotes(first.text),
+                    start_line=first.start_row + 1,
+                    end_line=last.end_row + 1,
+                    col=first.start_col,
+                    attached_code=attached,
+                    in_function=first.in_function,
+                    function_name=first.func_name,
+                )
+            )
+            continue
         raw_text = "\n".join(g.text for g in group)
         trailing_code = code_before(first)
         after_code = code_after(last)
@@ -222,7 +299,7 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
             # clause is a doc comment, even without special markers
             kind = Kind.DOC
 
-        content = strip_markers(raw_text)
+        content = strip_markers(raw_text, spec.line_marker)
         content_lines = [ln for ln in content.splitlines() if ln.strip()]
         content_head = content_lines[0] if content_lines else ""
         # line-comment groups are class-uniform (directive lines never merge
@@ -263,11 +340,11 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
 
 
 def _directive_line(text: str, spec: LangSpec) -> bool:
-    return is_directive_text(strip_markers(text.splitlines()[0]), spec.name, Kind.LINE)
+    return is_directive_text(strip_markers(text.splitlines()[0], spec.line_marker), spec.name, Kind.LINE)
 
 
-def _marker_line(text: str) -> bool:
-    return strip_markers(text.splitlines()[0]).startswith("uncomment-ignore")
+def _marker_line(text: str, spec: LangSpec) -> bool:
+    return strip_markers(text.splitlines()[0], spec.line_marker).startswith("uncomment-ignore")
 
 
 def _doc_class(text: str, spec: LangSpec) -> str:

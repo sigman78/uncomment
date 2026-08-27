@@ -100,6 +100,7 @@ def narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             )
 
 
+# uncomment-ignore[UC003]: this comment must quote the phrases the rule detects
 # UC003 works in two evidence tiers:
 #  - explicit edit context ("as requested", "the previous version") -> ERROR
 #  - a past-tense opener alone -> WARN; present tense ("Adds a newline…") is a
@@ -200,14 +201,18 @@ def banner(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 _CODEISH_RES = [
     re.compile(r"[;{}]\s*$"),
     re.compile(r"^\s*[{}]\s*$"),
-    re.compile(r"^\s*(if|for|while|switch|return|import|export|let|const|var|fn|func|def|pub|static|struct|class|case|else|try|catch)\b.*[;{()=:]"),
+    re.compile(r"^\s*(if|elif|for|while|switch|return|import|export|let|const|var|fn|func|def|pub|static|struct|class|case|else|try|catch|except|finally|with|raise|yield|assert)\b.*[;{()=:]"),
     re.compile(r"^\s*#\s*(include|define|if|ifdef|ifndef|endif|pragma)\b"),
     re.compile(r"^\s*[\w.\[\]:>*&-]+\s*\(.*\)\s*;?\s*$"),  # calls, incl. chained
     re.compile(r"^\s*[\w.\[\]]+\s*[-+*/|&^:]?=\s*[^=]"),
     re.compile(r"=>|->\s*\w|\)\s*{"),
     # bare one-operand statements: 'return result', 'break', 'continue'
     re.compile(r"^\s*return\s+[\w.\[\]()\"']+\s*;?\s*$"),
-    re.compile(r"^\s*(break|continue)\s*;?\s*$"),
+    re.compile(r"^\s*(break|continue|pass)\s*;?\s*$"),
+    # whole-line import statements and decorators (Python); anchored so prose
+    # like 'import the settings from the file' stays prose
+    re.compile(r"^\s*(import\s+[\w.]+(\s+as\s+\w+)?|from\s+[\w.]+\s+import\s+[\w.*,() ]+)\s*$"),
+    re.compile(r"^\s*@\w[\w.]*(\(.*\))?\s*$"),
 ]
 
 

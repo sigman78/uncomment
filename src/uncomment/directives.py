@@ -73,6 +73,29 @@ _RUST = [
     r"^@\s",                                     # compiletest: //@ check-pass
 ]
 
+# patterns see content AFTER the single leading '#' is stripped, so a shebang
+# arrives as "!/usr/bin/env python" and "# noqa" as "noqa"
+_PYTHON = [
+    r"^!\s*/",                                   # shebang
+    r"^-\*-.*-\*-\s*$",                          # emacs file variables (incl. coding)
+    r"^(en)?coding[:=]\s*[-\w.]+\s*$",           # PEP 263 encoding declaration
+    r"^vim?:\s?",                                # vim/vi modeline
+    r"^noqa\b",                                  # flake8/ruff suppression
+    r"^type:\s",                                 # PEP 484 type comments incl. type: ignore
+    r"^mypy:\s",
+    r"^pylint:\s*(disable|enable|skip-file)",
+    r"^ruff:\s*(noqa|isort)",
+    r"^flake8:\s*noqa",
+    r"^fmt:\s*(off|on|skip)\b",                  # black
+    r"^isort:\s*(skip|skip_file|off|on|split|dont[- ]add[- ]imports)",
+    r"^yapf:\s*(disable|enable)",
+    r"^pragma:\s*\S",                            # coverage.py: pragma: no cover
+    r"^nosec\b",                                 # bandit
+    r"^noinspection\s",                          # PyCharm
+    r"^cython:\s",
+    r"^(end)?region\b(\s+[\w-]+)?$",             # editor folding, marker already stripped
+]
+
 _BY_LANG: dict[str, list[str]] = {
     "c": _C_FAMILY,
     "cpp": _C_FAMILY,
@@ -81,6 +104,7 @@ _BY_LANG: dict[str, list[str]] = {
     "tsx": _JS_FAMILY,
     "go": _GO,
     "rust": _RUST,
+    "python": _PYTHON,
 }
 
 _COMPILED: dict[str, list[re.Pattern]] = {}

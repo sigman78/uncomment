@@ -31,7 +31,7 @@ class Config:
     doc_migration_lines: int = 12
     # UC009 trailing comment length
     max_trailing_chars: int = 60
-    # UC007 redundant doc
+    # UC007 threshold
     redundant_doc_overlap: float = 0.75
     # UC012: when true, ANY non-ASCII character in a comment is flagged,
     # not just emoji/decorative symbols
@@ -47,7 +47,7 @@ class Config:
     # per-comment rules
     growth_min_lines: int = 6
     growth_factor: float = 1.0
-    # STE wording
+    # STE limits
     ste_max_sentence_words: int = 20
     ste_max_paragraph_sentences: int = 6
     # cap on INFO findings per rule per file; the rest collapse into one summary

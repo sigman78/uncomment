@@ -10,7 +10,8 @@ tree-sitter parsing, judges only what an edit *added* (gate mode), and emits
 feedback a coding harness can feed straight back to the agent as a corrective
 prompt.
 
-Supported languages: **C, C++, JavaScript (JSX), TypeScript (TSX), Rust, Go**.
+Supported languages: **C, C++, JavaScript (JSX), TypeScript (TSX), Rust, Go,
+Python**.
 
 ## Install / run
 
@@ -123,12 +124,21 @@ tables and box diagrams, prose invariant sketches, and anything already
 present in the baseline.
 
 **Documentation in its rightful place stays.** Doxygen/JSDoc-tagged docs
-(`@brief`, `\param`, `@returns`…) and rustdoc conventional sections
-(`# Examples`, `# Errors`, `# Panics`, `# Safety`) mark structured API
+(`@brief`, `\param`, `@returns`…), rustdoc conventional sections
+(`# Examples`, `# Errors`, `# Panics`, `# Safety`), and Google-style
+docstring sections (`Args:`, `Returns:`, `Raises:`) mark structured API
 documentation; the docs-migration hint leaves them alone, and never suggests
-moving doc comments out of interface files (`.h`, `.hpp`, `.d.ts`) — that is
-where they belong. The agent feedback states this policy explicitly so an
-agent prunes noise without stripping real docs.
+moving doc comments out of interface files (`.h`, `.hpp`, `.d.ts`, `.pyi`) —
+that is where they belong. The agent feedback states this policy explicitly
+so an agent prunes noise without stripping real docs.
+
+**Python docstrings are doc comments.** A module, class, or function
+docstring is extracted as a doc comment attached to what it documents, so
+`"""Get the name."""` on `get_name` is flagged as redundant (UC007), a
+docstring essay earns the docs-migration hint, and module docstrings are
+recognized as the legitimate home for long documentation. Docstring lines
+never count as code in the gate's flood/amplification math, and a docstring
+is never treated as commented-out code.
 
 `uncomment rules --format json` emits the full rule table (including the
 gate-only UC100/UC101) for harnesses that map findings to annotations.
@@ -143,8 +153,12 @@ and they do not count toward gate/flood statistics. Recognized out of the box:
 `//go:*` (build/generate/embed/linkname/…), `// +build`, `//nolint`,
 `//lint:ignore`, cgo preambles (the comment above `import "C"`), rustfmt/
 compiletest markers, coverage exclusions (`LCOV_EXCL_*`), `NOSONAR`,
-fallthrough hints, and `#region`/`#endregion`. Add project-specific ones via
-`directive-patterns` in the config.
+fallthrough hints, and `#region`/`#endregion`. For Python: shebangs, PEP 263
+encoding declarations, editor modelines, `# noqa`, `# type:` comments,
+`# mypy:`/`# pylint:`/`# ruff:`/`# flake8: noqa`, `# fmt: off/on/skip`,
+`# isort:`, `# yapf:`, `# pragma: no cover`, `# nosec`, `# noinspection`,
+and `# cython:`. Add project-specific ones via `directive-patterns` in the
+config.
 
 The exemption is per-line and syntax-checked so noise cannot hide behind it:
 a multi-line block comment is only exempt when it contains nothing but the
@@ -236,9 +250,12 @@ shows the feedback to the agent:
 
 ```console
 uv run pytest
+uv run uncomment check src/ tests/test_*.py   # dogfood: CI enforces this
 ```
 
-The test base is corpus-driven and every change must keep it green:
+The tool lints its own source in CI: `src/` and the test files must stay
+clean at warn severity (the corpus files are deliberate noise and stay out of
+the scan). The test base is corpus-driven and every change must keep it green:
 
 - `tests/corpus/<lang>/agent_noise.*` — files full of agent-style noise, with
   a `.expected.json` sidecar holding the **exact** set of expected

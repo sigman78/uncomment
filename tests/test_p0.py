@@ -27,8 +27,8 @@ def test_nonexistent_path_exits_2(capsys):
 
 
 def test_unsupported_explicit_file_is_reported(tmp_path, capsys):
-    p = tmp_path / "script.py"
-    p.write_text("# python\n", encoding="utf-8")
+    p = tmp_path / "script.rb"
+    p.write_text("# ruby\n", encoding="utf-8")
     assert main(["check", str(p)]) == 0
     captured = capsys.readouterr()
     assert "unsupported" in captured.err

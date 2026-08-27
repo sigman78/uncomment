@@ -24,3 +24,9 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -q
+
+      # dogfood: our own comments must pass our own linter (corpus files are
+      # deliberate noise and stay out of the scan)
+      - name: Self-lint
+        shell: bash
+        run: uv run uncomment check src/ tests/test_*.py
