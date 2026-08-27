@@ -17,7 +17,7 @@ from .config import Config
 from .extract import extract_file, extract_source
 from .languages import spec_for_path
 from .model import Comment, Finding, Severity, SourceFile
-from .rules import run_rules
+from .rules import run_rules, visible_comments
 
 _WS_RE = re.compile(r"\s+")
 
@@ -76,14 +76,16 @@ def gate_file(new_path: Path, baseline: str, new_root: Path, cfg: Config) -> tup
     if old_source is not None:
         spec = spec_for_path(str(new_path))
         old_sf = extract_source(str(new_path), old_source, spec)
-        old_counts = Counter(_norm(c) for c in old_sf.comments)
+        old_counts = Counter(_norm(c) for c in visible_comments(old_sf, cfg))
         old_code_lines = old_sf.code_line_count
     else:
         old_counts = Counter()
         old_code_lines = 0
 
+    # directives (nolint, go:build, eslint-disable, …) are functional lines,
+    # not comment noise: they neither gate nor count toward the flood metric
     new_comments: list[Comment] = []
-    for c in sf.comments:
+    for c in visible_comments(sf, cfg):
         key = _norm(c)
         if old_counts[key] > 0:
             old_counts[key] -= 1

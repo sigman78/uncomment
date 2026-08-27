@@ -76,6 +76,19 @@ What is deliberately **not** flagged: license headers, module/package docs
 invariants), short WHY-comments ("because…", "workaround…", links), and
 anything already present in the baseline.
 
+**Tooling directives are never judged.** Linter/compiler control comments are
+functional lines, so no rule sees them, they are never suggested for removal,
+and they do not count toward gate/flood statistics. Recognized out of the box:
+`eslint-*`, `@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`, `prettier-ignore`,
+`biome-ignore`, `deno-lint-ignore`, webpack/vite magic comments, `@__PURE__`,
+`sourceMappingURL`, istanbul/c8/v8 coverage markers, `NOLINT*`,
+`clang-format on/off`, `cppcheck-suppress`, `IWYU pragma`, coverity,
+`//go:*` (build/generate/embed/linkname/…), `// +build`, `//nolint`,
+`//lint:ignore`, cgo preambles (the comment above `import "C"`), rustfmt/
+compiletest markers, coverage exclusions (`LCOV_EXCL_*`), `NOSONAR`,
+fallthrough hints, and `#region`/`#endregion`. Add project-specific ones via
+`directive-patterns` in the config.
+
 The STE rules are wording guidance inspired by ASD-STE100 (Simplified
 Technical English): short sentences, active voice, one simple word per
 meaning. They never gate by default; raise them via config if you want them to.
@@ -96,6 +109,7 @@ flood-min-lines = 12
 ste-max-sentence-words = 20
 max-hints-per-rule = 8             # collapse repetitive info hints per file
 disable = ["STE02", "UC011"]       # rule ids or prefixes ("STE" disables all STE)
+directive-patterns = ["^MY-LINT:"] # extra tooling-directive regexes to exempt
 
 [tool.uncomment.severity]          # promote/demote rules
 STE03 = "warn"

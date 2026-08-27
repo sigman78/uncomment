@@ -44,7 +44,21 @@ def is_license_header(comment: Comment) -> bool:
     return comment.attachment.value == "file_header" and bool(_LICENSE_RE.search(comment.content))
 
 
+def visible_comments(sf: SourceFile, cfg: Config) -> list:
+    """Comments that rules may judge: tooling directives are exempt, plus
+    anything matching the user's extra `directive-patterns` config."""
+    extra = [re.compile(p) for p in cfg.directive_patterns]
+    return [
+        c
+        for c in sf.comments
+        if not c.is_directive and not any(rx.search(c.content) for rx in extra)
+    ]
+
+
 def run_rules(sf: SourceFile, cfg: Config) -> list[Finding]:
+    from dataclasses import replace
+
+    sf = replace(sf, comments=visible_comments(sf, cfg))
     findings: list[Finding] = []
     for r in _REGISTRY:
         if not cfg.rule_enabled(r.id):

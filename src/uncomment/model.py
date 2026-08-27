@@ -46,6 +46,7 @@ class Comment:
     attached_code: str = ""   # code on the same line (trailing) or first line below (preceding)
     in_function: bool = False
     function_name: str = ""
+    is_directive: bool = False  # linter/compiler control comment; never judged
 
     @property
     def line_count(self) -> int:

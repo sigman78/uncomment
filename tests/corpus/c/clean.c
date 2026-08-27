@@ -21,3 +21,5 @@ size_t safe_copy(char *dst, const char *src, size_t n) {
     dst[len] = '\0';
     return len;
 }
+
+static int calibration = 1234; // NOLINT(readability-magic-numbers) constant taken from the sensor datasheet

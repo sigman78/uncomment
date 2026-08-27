@@ -9,3 +9,10 @@ export function parseIsoDate(text: string): Date {
   }
   return new Date(ms);
 }
+
+export function legacyBridge(): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const shim: any = globalThis;
+  // @ts-expect-error the vendor bundle attaches this at runtime without types
+  return shim.__vendorHook();
+}

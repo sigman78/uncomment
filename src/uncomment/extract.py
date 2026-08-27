@@ -12,6 +12,7 @@ from pathlib import Path
 
 from tree_sitter_language_pack import get_parser
 
+from .directives import is_cgo_preamble, is_directive_text
 from .languages import COMMENT_NODE_TYPES, LangSpec, spec_for_path
 from .model import Attachment, Comment, FunctionInfo, Kind, SourceFile
 
@@ -164,6 +165,9 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
             and rc.start_row == groups[-1][-1].end_row + 1
             and rc.start_col == groups[-1][-1].start_col
             and _doc_class(rc.text, spec) == _doc_class(groups[-1][-1].text, spec)
+            # a directive line never merges with prose, so the prose part
+            # stays judged and the directive stays protected
+            and _directive_line(rc.text, spec) == _directive_line(groups[-1][-1].text, spec)
         ):
             groups[-1].append(rc)
         else:
@@ -212,6 +216,8 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
             # clause is a doc comment, even without special markers
             kind = Kind.DOC
 
+        content = strip_markers(raw_text)
+        content_head = content.splitlines()[0] if content else ""
         comments.append(
             Comment(
                 path=path,
@@ -219,13 +225,17 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
                 kind=kind,
                 attachment=attachment,
                 text=raw_text,
-                content=strip_markers(raw_text),
+                content=content,
                 start_line=first.start_row + 1,
                 end_line=last.end_row + 1,
                 col=first.start_col,
                 attached_code=attached,
                 in_function=first.in_function,
                 function_name=first.func_name,
+                is_directive=(
+                    is_directive_text(content_head, spec.name, kind)
+                    or is_cgo_preamble(spec.name, attached)
+                ),
             )
         )
 
@@ -238,6 +248,10 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
         code_line_count=len(code_rows),
         comment_line_count=len(comment_rows),
     )
+
+
+def _directive_line(text: str, spec: LangSpec) -> bool:
+    return is_directive_text(strip_markers(text.splitlines()[0]), spec.name, Kind.LINE)
 
 
 def _doc_class(text: str, spec: LangSpec) -> str:
