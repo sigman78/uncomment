@@ -23,6 +23,9 @@ def stem(word: str) -> str:
             w = w[: len(w) - len(suffix)]
             if suffix == "ies" or suffix == "ied":
                 w += "y"
+            # undouble 'running'->'runn'->'run', but keep call/pass/buzz
+            if suffix in ("ing", "ed") and len(w) >= 4 and w[-1] == w[-2] and w[-1] not in "lsz":
+                w = w[:-1]
             break
     # normalize the mute 'e' so 'frobnicates'->'frobnicat' matches 'frobnicate'
     if w.endswith("e") and len(w) >= 4:
