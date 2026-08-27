@@ -1,13 +1,15 @@
-"""Renderers: human text, machine JSON, and agent-feedback markdown.
+"""Renderers: human text, machine JSON, agent-feedback markdown, and SARIF.
 
 The 'agent' format is designed to be fed back verbatim to a coding agent as a
-corrective prompt: policy first, then per-file actionable items.
+corrective prompt: policy first, then per-file actionable items. The 'sarif'
+format (SARIF 2.1.0) plugs into GitHub code scanning and other annotators.
 """
 
 from __future__ import annotations
 
 import json
 from collections import Counter
+from pathlib import Path
 
 from .model import Finding, Severity
 
@@ -132,4 +134,76 @@ def render_agent(findings: list[Finding], stats: dict) -> str:
     return "\n".join(out)
 
 
-RENDERERS = {"text": render_text, "json": render_json, "agent": render_agent}
+_SARIF_LEVEL = {Severity.ERROR: "error", Severity.WARN: "warning", Severity.INFO: "note"}
+_SARIF_LEVEL_BY_NAME = {"error": "error", "warn": "warning", "info": "note"}
+
+
+def _artifact_uri(path: str) -> str:
+    p = Path(path)
+    return p.as_uri() if p.is_absolute() else p.as_posix()
+
+
+def render_sarif(findings: list[Finding], stats: dict) -> str:
+    from . import __version__
+    from .rules import GATE_SIGNALS, all_rules
+
+    meta = {r.id: (r.title, r.doc, _SARIF_LEVEL[r.severity]) for r in all_rules()}
+    meta.update({rid: (title, doc, _SARIF_LEVEL_BY_NAME[sev]) for rid, sev, title, doc in GATE_SIGNALS})
+
+    rule_ids = sorted({f.rule for f in findings})
+    index = {rid: i for i, rid in enumerate(rule_ids)}
+    descriptors = []
+    for rid in rule_ids:
+        title, doc, level = meta.get(rid, (rid, "", "warning"))
+        desc: dict = {
+            "id": rid,
+            "shortDescription": {"text": title},
+            "defaultConfiguration": {"level": level},
+        }
+        if doc:
+            desc["fullDescription"] = {"text": doc}
+        descriptors.append(desc)
+
+    results = []
+    for f in findings:
+        region: dict = {"startLine": f.line, "endLine": f.end_line}
+        if f.excerpt:
+            region["snippet"] = {"text": f.excerpt}
+        results.append(
+            {
+                "ruleId": f.rule,
+                "ruleIndex": index[f.rule],
+                "level": _SARIF_LEVEL[f.severity],
+                "message": {"text": f"{f.message}. Fix: {f.action}"},
+                "locations": [
+                    {
+                        "physicalLocation": {
+                            "artifactLocation": {"uri": _artifact_uri(f.path)},
+                            "region": region,
+                        }
+                    }
+                ],
+            }
+        )
+
+    doc = {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "uncomment",
+                        "version": __version__,
+                        "informationUri": "https://github.com/sigman78/uncomment",
+                        "rules": descriptors,
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+    return json.dumps(doc, indent=2)
+
+
+RENDERERS = {"text": render_text, "json": render_json, "agent": render_agent, "sarif": render_sarif}

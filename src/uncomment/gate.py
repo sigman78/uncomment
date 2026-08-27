@@ -1,8 +1,8 @@
 """Gate mode: judge only comments that are NEW relative to a baseline.
 
-The baseline is an older copy of the tree (directory, single file, or a git
-ref via "git:REF"). Matching runs in stages so ordinary edits are not
-re-judged:
+The baseline is an older copy of the tree (directory, single file, a git ref
+via "git:REF", or a unified diff whose reverse gives the old content).
+Matching runs in stages so ordinary edits are not re-judged:
 
 1. exact match against the same file's baseline (normalized content),
 2. exact match against leftover baseline comments from the other scanned
@@ -11,6 +11,10 @@ re-judged:
    exact match against the rest of the baseline tree,
 4. fuzzy match (similarity >= baseline_similarity) so typo fixes and light
    rewording do not count as new.
+
+Baseline access goes through a provider object; the git provider keeps one
+`git cat-file --batch` process per repository so gating hundreds of files
+costs two subprocesses, not two per file.
 
 The comment-flood signal (UC100) counts only NOISY new comment lines — new
 comments that triggered at least one finding — so license headers and clean
@@ -75,6 +79,7 @@ def _similar(a: str, b: str, threshold: float) -> bool:
 class GateResult:
     findings: list[Finding] = field(default_factory=list)
     files_scanned: int = 0
+    files_skipped: int = 0
     new_comments: int = 0
     new_comment_lines: int = 0
     added_code_lines: int = 0
@@ -109,11 +114,98 @@ def _git_repo_top(anchor_dir: Path) -> Path | None:
     return _repo_top_cache[key]
 
 
-def _baseline_source(baseline: str, new_path: Path, new_root: Path) -> tuple[str | None, object]:
-    """Return (text, identity) for new_path's baseline counterpart; identity
-    keys the file so the tree sweep can skip already-consumed counterparts."""
-    if baseline.startswith("git:"):
-        ref = baseline[4:] or "HEAD"
+class _CatFileBatch:
+    """One persistent `git cat-file --batch` process per repository. Requests
+    are `REF:path` lines on stdin; a dead process is a hard error, never a
+    silent 'everything is new'."""
+
+    def __init__(self, top: Path):
+        self.top = top
+        try:
+            self._proc = subprocess.Popen(
+                ["git", "cat-file", "--batch"],
+                cwd=top, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            raise ToolError("git executable not found; a git: baseline needs git on PATH") from None
+
+    def read(self, spec: str) -> bytes | None:
+        proc = self._proc
+        try:
+            proc.stdin.write(spec.encode("utf-8") + b"\n")
+            proc.stdin.flush()
+            header = proc.stdout.readline()
+        except OSError:
+            header = b""
+        if not header:
+            raise ToolError(f"git cat-file exited unexpectedly while reading '{spec}'")
+        parts = header.decode("utf-8", "replace").split()
+        if len(parts) != 3 or not parts[2].isdigit():
+            return None  # "<spec> missing" (or ambiguous/dangling)
+        size = int(parts[2])
+        data = proc.stdout.read(size + 1)[:size]  # payload + trailing LF
+        if len(data) < size:
+            raise ToolError(f"git cat-file exited unexpectedly while reading '{spec}'")
+        return data if parts[1] == "blob" else None
+
+    def close(self) -> None:
+        try:
+            self._proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            self._proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+
+
+class _PathBaseline:
+    """Baseline is a directory tree or a single file on disk."""
+
+    def __init__(self, baseline: str):
+        self.base = Path(baseline)
+
+    def source_for(self, new_path: Path, new_root: Path) -> tuple[str | None, object]:
+        if self.base.is_file():
+            candidate = self.base
+        else:
+            try:
+                rel = new_path.resolve().relative_to(new_root.resolve())
+            except ValueError:
+                rel = Path(new_path.name)
+            candidate = self.base / rel
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8-sig", errors="replace"), candidate.resolve()
+        return None, candidate.resolve()
+
+    def tree_files(self, anchor: Path, consumed: set) -> list[tuple[str, str]]:
+        out = []
+        if self.base.is_dir():
+            for p in sorted(self.base.rglob("*")):
+                if not p.is_file() or p.suffix.lower() not in EXTENSIONS or p.resolve() in consumed:
+                    continue
+                out.append((str(p), p.read_text(encoding="utf-8-sig", errors="replace")))
+        return out
+
+    def close(self) -> None:
+        pass
+
+
+class _GitBaseline:
+    """Baseline is a git ref; file content comes from one cat-file batch
+    process per repository top."""
+
+    def __init__(self, ref: str):
+        self.ref = ref or "HEAD"
+        self._batches: dict[Path, _CatFileBatch] = {}
+
+    def _batch(self, top: Path) -> _CatFileBatch:
+        if top not in self._batches:
+            self._batches[top] = _CatFileBatch(top)
+        return self._batches[top]
+
+    def source_for(self, new_path: Path, new_root: Path) -> tuple[str | None, object]:
         top = _git_repo_top(new_path.parent)
         if top is None:
             return None, None
@@ -121,64 +213,72 @@ def _baseline_source(baseline: str, new_path: Path, new_root: Path) -> tuple[str
             rel = new_path.resolve().relative_to(top.resolve()).as_posix()
         except ValueError:
             return None, None
-        try:
-            out = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=top, capture_output=True, check=True)
-            return out.stdout.decode("utf-8-sig", "replace"), rel
-        except subprocess.CalledProcessError:
+        data = self._batch(top).read(f"{self.ref}:{rel}")
+        if data is None:
             return None, rel
-    base = Path(baseline)
-    if base.is_file():
-        candidate = base
-    else:
-        try:
-            rel = new_path.resolve().relative_to(new_root.resolve())
-        except ValueError:
-            rel = Path(new_path.name)
-        candidate = base / rel
-    if candidate.is_file():
-        return candidate.read_text(encoding="utf-8-sig", errors="replace"), candidate.resolve()
-    return None, candidate.resolve()
+        return data.decode("utf-8-sig", "replace"), rel
 
-
-def _tree_norms(baseline: str, anchor: Path, consumed: set, cfg: Config) -> Counter:
-    """Comment norms from baseline files that were not per-file counterparts —
-    loaded only when a scanned file lacks a counterpart (rename/new file)."""
-    pool: Counter = Counter()
-
-    def absorb(path_label: str, text: str) -> None:
-        spec = spec_for_path(path_label)
-        if spec is None:
-            return
-        sf = extract_source(path_label, text, spec)
-        pool.update(_norm(c) for c in visible_comments(sf, cfg))
-
-    if baseline.startswith("git:"):
-        ref = baseline[4:] or "HEAD"
+    def tree_files(self, anchor: Path, consumed: set) -> list[tuple[str, str]]:
         top = _git_repo_top(anchor if anchor.is_dir() else anchor.parent)
         if top is None:
-            return pool
+            return []
         try:
             listing = subprocess.run(
-                ["git", "ls-tree", "-r", "--name-only", ref],
+                ["git", "ls-tree", "-r", "--name-only", self.ref],
                 cwd=top, capture_output=True, text=True, check=True,
             ).stdout.splitlines()
         except subprocess.CalledProcessError:
-            return pool
+            return []
+        out = []
+        batch = self._batch(top)
         for rel in listing:
             if rel in consumed or Path(rel).suffix.lower() not in EXTENSIONS:
                 continue
-            try:
-                out = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=top, capture_output=True, check=True)
-            except subprocess.CalledProcessError:
-                continue
-            absorb(rel, out.stdout.decode("utf-8-sig", "replace"))
-    else:
-        base = Path(baseline)
-        if base.is_dir():
-            for p in sorted(base.rglob("*")):
-                if not p.is_file() or p.suffix.lower() not in EXTENSIONS or p.resolve() in consumed:
-                    continue
-                absorb(str(p), p.read_text(encoding="utf-8-sig", errors="replace"))
+            data = batch.read(f"{self.ref}:{rel}")
+            if data is not None:
+                out.append((rel, data.decode("utf-8-sig", "replace")))
+        return out
+
+    def close(self) -> None:
+        for batch in self._batches.values():
+            batch.close()
+
+
+class _DiffBaseline:
+    """Baseline is the reverse of a unified diff: old content was rebuilt per
+    file up front (None = file created by the diff). The diff defines the
+    whole edit, so there is no wider tree to sweep."""
+
+    def __init__(self, old_texts: dict[Path, str | None]):
+        self._old = old_texts
+
+    def source_for(self, new_path: Path, new_root: Path) -> tuple[str | None, object]:
+        key = new_path.resolve()
+        return self._old.get(key), key
+
+    def tree_files(self, anchor: Path, consumed: set) -> list[tuple[str, str]]:
+        return []
+
+    def close(self) -> None:
+        pass
+
+
+def _provider_for(baseline: str):
+    if baseline.startswith("git:"):
+        return _GitBaseline(baseline[4:])
+    return _PathBaseline(baseline)
+
+
+def _tree_norms(provider, anchor: Path, consumed: set, cfg: Config) -> Counter:
+    """Comment norms from baseline files that were not per-file counterparts —
+    loaded only when a scanned file lacks a counterpart (rename/new file)."""
+    pool: Counter = Counter()
+    for path_label, text in provider.tree_files(anchor, consumed):
+        spec = spec_for_path(path_label)
+        if spec is None:
+            continue
+        sf = extract_source(path_label, text, spec)
+        pool.update(_norm(c) for c in visible_comments(sf, cfg))
     return pool
 
 
@@ -286,51 +386,54 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
     return findings
 
 
-def _gate(files: list[Path], baseline: str, cfg: Config, root_of) -> GateResult:
+def _gate(files: list[Path], provider, cfg: Config, root_of) -> GateResult:
     states: list[_FileState] = []
     cross_pool: Counter = Counter()
     consumed: set = set()
     result = GateResult()
 
-    for f in files:
-        sf = extract_file(f)
-        if sf is None:
-            continue
-        old_source, identity = _baseline_source(baseline, f, root_of(f))
-        if identity is not None:
-            consumed.add(identity)
-        old_norms: Counter = Counter()
-        old_code_lines = 0
-        old_prose_lines = 0
-        if old_source is not None:
-            spec = spec_for_path(str(f))
-            old_sf = extract_source(str(f), old_source, spec)
-            old_visible = visible_comments(old_sf, cfg)
-            old_norms = Counter(_norm(c) for c in old_visible)
-            old_code_lines = old_sf.code_line_count
-            old_prose_lines = _prose_lines(old_visible)
-        unmatched = _consume_exact(visible_comments(sf, cfg), old_norms)
-        cross_pool += old_norms  # leftovers feed cross-file matching
-        states.append(
-            _FileState(
-                path=f,
-                sf=sf,
-                unmatched=unmatched,
-                added_code_lines=max(0, sf.code_line_count - old_code_lines),
-                had_counterpart=old_source is not None,
-                old_prose_lines=old_prose_lines,
+    try:
+        for f in files:
+            sf = extract_file(f)
+            if sf is None:
+                continue
+            old_source, identity = provider.source_for(f, root_of(f))
+            if identity is not None:
+                consumed.add(identity)
+            old_norms: Counter = Counter()
+            old_code_lines = 0
+            old_prose_lines = 0
+            if old_source is not None:
+                spec = spec_for_path(str(f))
+                old_sf = extract_source(str(f), old_source, spec)
+                old_visible = visible_comments(old_sf, cfg)
+                old_norms = Counter(_norm(c) for c in old_visible)
+                old_code_lines = old_sf.code_line_count
+                old_prose_lines = _prose_lines(old_visible)
+            unmatched = _consume_exact(visible_comments(sf, cfg), old_norms)
+            cross_pool += old_norms  # leftovers feed cross-file matching
+            states.append(
+                _FileState(
+                    path=f,
+                    sf=sf,
+                    unmatched=unmatched,
+                    added_code_lines=max(0, sf.code_line_count - old_code_lines),
+                    had_counterpart=old_source is not None,
+                    old_prose_lines=old_prose_lines,
+                )
             )
-        )
 
-    leftovers = any(st.unmatched for st in states)
-    if leftovers:
-        # renames and file splits: pull in the rest of the baseline tree
-        if any(not st.had_counterpart for st in states):
-            cross_pool += _tree_norms(baseline, files[0], consumed, cfg)
-        for st in states:
-            st.unmatched = _consume_exact(st.unmatched, cross_pool)
-        for st in states:
-            st.unmatched = _consume_fuzzy(st.unmatched, cross_pool, cfg.baseline_similarity)
+        leftovers = any(st.unmatched for st in states)
+        if leftovers:
+            # renames and file splits: pull in the rest of the baseline tree
+            if any(not st.had_counterpart for st in states):
+                cross_pool += _tree_norms(provider, files[0], consumed, cfg)
+            for st in states:
+                st.unmatched = _consume_exact(st.unmatched, cross_pool)
+            for st in states:
+                st.unmatched = _consume_fuzzy(st.unmatched, cross_pool, cfg.baseline_similarity)
+    finally:
+        provider.close()
 
     for st in states:
         result.files_scanned += 1
@@ -353,7 +456,75 @@ def gate_paths(paths: list[Path], baseline: str, cfg: Config, root: Path | None 
             if f not in roots:
                 roots[f] = file_root
                 files.append(f)
-    return _gate(files, baseline, cfg, lambda f: roots[f])
+    return _gate(files, _provider_for(baseline), cfg, lambda f: roots[f])
+
+
+def _locate_diff_file(rel: str, root: Path) -> Path | None:
+    """git prints paths relative to the repository top, whatever the cwd:
+    resolve against the given root first, then against the enclosing repo."""
+    candidate = root / rel
+    if candidate.is_file():
+        return candidate
+    top = _git_repo_top(root)
+    if top is not None and (top / rel).is_file():
+        return top / rel
+    return None
+
+
+def _split_lines(text: str) -> list[str]:
+    """Split on \\n only, like diff tools and the extractor do; splitlines()
+    would desync on \\f or U+2028."""
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()  # the trailing-newline artifact, not a line
+    return lines
+
+
+def gate_diff(diff_text: str, cfg: Config, restrict: list[Path] | None = None,
+              root: Path | None = None) -> GateResult:
+    """Gate using a unified diff as the baseline: new content comes from the
+    working tree, old content from reverse-applying the hunks. Files the diff
+    deleted, binary files, and unsupported languages are skipped; a diff that
+    no longer matches the tree is a hard error."""
+    from .diffio import parse_diff, reverse_apply
+
+    root = (root or Path.cwd()).resolve()
+    limits = [p.resolve() for p in restrict] if restrict else None
+    old_texts: dict[Path, str | None] = {}
+    files: list[Path] = []
+    skipped = 0
+
+    for fp in parse_diff(diff_text):
+        if fp.new_path is None or fp.binary:
+            continue
+        if Path(fp.new_path).suffix.lower() not in EXTENSIONS:
+            skipped += 1
+            continue
+        disk = _locate_diff_file(fp.new_path, root)
+        if disk is None:
+            raise ToolError(
+                f"file from diff not found on disk: {fp.new_path} "
+                "(stale diff, or run from the directory the diff paths are relative to)"
+            )
+        resolved = disk.resolve()
+        if limits is not None and not any(resolved == lim or resolved.is_relative_to(lim) for lim in limits):
+            continue
+        try:
+            # report paths the way git prints them: relative to the cwd
+            disk = resolved.relative_to(Path.cwd())
+        except ValueError:
+            pass
+        if fp.old_path is None:
+            old_texts[resolved] = None  # created by the diff: no counterpart
+        else:
+            new_lines = _split_lines(disk.read_text(encoding="utf-8-sig", errors="replace"))
+            old_lines = reverse_apply(fp, new_lines, fp.new_path)
+            old_texts[resolved] = "\n".join(old_lines) + ("\n" if old_lines else "")
+        files.append(disk)
+
+    result = _gate(files, _DiffBaseline(old_texts), cfg, lambda f: root)
+    result.files_skipped = skipped
+    return result
 
 
 def gate_file(new_path: Path, baseline: str, new_root: Path, cfg: Config) -> tuple[list[Finding], SourceFile | None, dict]:
@@ -361,7 +532,7 @@ def gate_file(new_path: Path, baseline: str, new_root: Path, cfg: Config) -> tup
     sf = extract_file(new_path)
     if sf is None:
         return [], None, {"new_comments": 0, "new_comment_lines": 0, "added_code_lines": 0}
-    result = _gate([Path(new_path)], baseline, cfg, lambda f: new_root)
+    result = _gate([Path(new_path)], _provider_for(baseline), cfg, lambda f: new_root)
     stats = {
         "new_comments": result.new_comments,
         "new_comment_lines": result.new_comment_lines,
