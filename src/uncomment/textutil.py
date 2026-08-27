@@ -38,13 +38,47 @@ def split_identifier(ident: str) -> list[str]:
     return [p.lower() for p in parts if p and not p.isdigit()]
 
 
+# operators verbalized: "// increment the counter" restates "counter++" even
+# though the operator contributes no identifier. Multi-char operators are
+# checked before their single-char prefixes.
+_OPERATOR_WORDS: list[tuple[str, tuple[str, ...]]] = [
+    ("++", ("increment",)),
+    ("--", ("decrement",)),
+    ("+=", ("add", "increase")),
+    ("-=", ("subtract", "decrease")),
+    ("*=", ("multiply", "scale")),
+    ("/=", ("divide",)),
+    ("==", ("equal", "check", "compare")),
+    ("!=", ("not", "equal", "differ")),
+    ("&&", ("and",)),
+    ("||", ("or",)),
+    ("=", ("set", "assign", "store")),
+    ("+", ("add", "plus", "sum")),
+    ("-", ("minus", "subtract")),
+    ("*", ("multiply", "times")),
+    ("/", ("divide",)),
+    ("%", ("modulo", "remainder")),
+    ("<", ("less", "below", "compare")),
+    (">", ("greater", "above", "compare")),
+    ("!", ("not", "negate")),
+    ("(", ("call", "invoke")),
+]
+
+
 def code_words(code: str) -> set[str]:
-    """Stemmed word set from a line of code: whole and split identifiers."""
+    """Stemmed word set from a line of code: whole and split identifiers,
+    plus verbalized operators."""
     words: set[str] = set()
     for ident in _IDENT_RE.findall(code):
         words.add(stem(ident.lower()))  # whole identifier, so 'GetName' in prose matches
         for part in split_identifier(ident):
             words.add(stem(part))
+    rest = code
+    for op, verbal in _OPERATOR_WORDS:
+        if op in rest:
+            rest = rest.replace(op, " ")
+            for w in verbal:
+                words.add(stem(w))
     return words
 
 
