@@ -19,6 +19,7 @@ Requires Python ≥ 3.13 and [uv](https://docs.astral.sh/uv/):
 ```console
 uv run uncomment check src/                      # scan everything
 uv run uncomment gate src/ --baseline git:HEAD   # judge only new comments
+git diff | uv run uncomment gate --diff -        # judge only what a diff added
 uv run uncomment rules                           # list rules
 ```
 
@@ -62,6 +63,22 @@ rules. Documentation and license text never count on either side.
 uncomment gate src/parser.c --baseline git:main --format agent
 ```
 
+**Diff input** (`--diff FILE`, `-` for stdin) takes the edit itself as the
+baseline: new content comes from the working tree, old content from
+reverse-applying the hunks. No `--baseline` needed, no repository walk — only
+the files the diff touched are gated, so it drops straight into any harness
+that has the edit as a diff:
+
+```console
+git diff | uncomment gate --diff - --format agent
+```
+
+Both git diffs (renames, new/deleted files, `diff.mnemonicPrefix`, quoted
+paths) and plain unified diffs are accepted; positional paths, when given,
+restrict gating to files under them. A diff that no longer matches the
+working tree is a hard error (exit `2`) — a stale diff must never silently
+mis-judge comments.
+
 ## Output formats
 
 - `--format text` — human-readable, one finding per block.
@@ -72,6 +89,9 @@ uncomment gate src/parser.c --baseline git:main --format agent
   then per-file items marked **MUST FIX** (warn/error) or *consider* (hints),
   each with the offending excerpt and the concrete action. Feed this back to
   the agent that made the edit and re-run the gate on its next attempt.
+- `--format sarif` — SARIF 2.1.0 for GitHub code scanning and other
+  annotators: rule metadata with default levels, per-finding regions and
+  snippets, error/warn/info mapped to error/warning/note.
 
 ## Rules
 
@@ -188,10 +208,11 @@ instruction, then re-run. No harness-specific coupling. Decide explicitly what
 exit `2` (bad path/baseline/config) means for your pipeline: the hook example
 below fails open on it; a stricter setup should fail closed.
 
-CI example:
+CI examples:
 
 ```console
 uncomment gate . --baseline git:origin/main --format agent > comment-feedback.md
+git diff origin/main...HEAD | uncomment gate --diff - --format sarif > uncomment.sarif
 ```
 
 Claude Code hook example (`.claude/settings.json`) — blocks a noisy edit and
@@ -232,4 +253,7 @@ adjacent line comments are merged into logical comments, then classified by
 kind (line / block / doc, including Go's convention docs) and attachment
 (file header / preceding / trailing / floating / in-function). Rules operate
 on that model, so a future Rust port can reuse the same corpus and expected
-findings unchanged.
+findings unchanged. Baseline access goes through a provider seam
+(directory / git / diff); the git provider serves file content from one
+`git cat-file --batch` process per repository, so a gate over hundreds of
+files costs two subprocesses, not two per file.

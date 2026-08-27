@@ -18,7 +18,7 @@ from .extract import extract_file
 from .languages import EXTENSIONS
 from .model import Severity, ToolError
 from .report import RENDERERS, to_ascii
-from .rules import all_rules, run_rules
+from .rules import GATE_SIGNALS, all_rules, run_rules
 
 SKIP_DIRS = frozenset(
     {".git", ".hg", ".svn", "node_modules", "target", "build", "dist", "out",
@@ -105,32 +105,47 @@ def cmd_check(args) -> int:
     return _emit_and_exit(findings, stats, args, cfg)
 
 
-def cmd_gate(args) -> int:
-    from .gate import gate_paths, validate_baseline
+def _read_diff(source: str) -> str:
+    if source == "-":
+        # read stdin as bytes: console/pipe encodings are unreliable on Windows
+        return sys.stdin.buffer.read().decode("utf-8-sig", "replace")
+    p = Path(source)
+    if not p.is_file():
+        raise ToolError(f"diff file does not exist: {source}")
+    return p.read_text(encoding="utf-8-sig", errors="replace")
 
-    paths = _validated_paths(args.paths)
+
+def cmd_gate(args) -> int:
+    from .gate import gate_diff, gate_paths, validate_baseline
+
     cfg = _load_config(args)
-    validate_baseline(args.baseline, paths[0])
-    result = gate_paths(paths, args.baseline, cfg)
+    if args.diff and args.baseline:
+        raise ToolError("--diff and --baseline are mutually exclusive")
+    if args.diff:
+        restrict = _validated_paths(args.paths) if args.paths else None
+        result = gate_diff(_read_diff(args.diff), cfg, restrict)
+        skipped = result.files_skipped
+        baseline_label = f"diff:{'stdin' if args.diff == '-' else args.diff}"
+    else:
+        if not args.baseline:
+            raise ToolError("gate needs --baseline DIR|FILE|git:REF or --diff FILE|-")
+        if not args.paths:
+            raise ToolError("gate with --baseline needs at least one path to scan")
+        paths = _validated_paths(args.paths)
+        validate_baseline(args.baseline, paths[0])
+        result = gate_paths(paths, args.baseline, cfg)
+        skipped = _skipped_explicit(paths)
+        baseline_label = args.baseline
     stats = {
         "mode": "gate",
-        "baseline": args.baseline,
+        "baseline": baseline_label,
         "files_scanned": result.files_scanned,
-        "files_skipped": _skipped_explicit(paths),
+        "files_skipped": skipped,
         "new_comments": result.new_comments,
         "new_comment_lines": result.new_comment_lines,
         "added_code_lines": result.added_code_lines,
     }
     return _emit_and_exit(result.findings, stats, args, cfg)
-
-
-# gate-only signals are synthesized in gate.py, not registered as rules
-_GATE_RULES = [
-    ("UC100", "error", "comment-flood (gate only)",
-     "Edit adds far more noisy comment lines than code lines relative to the baseline."),
-    ("UC101", "warn", "comment-amplification (gate only)",
-     "Edit multiplies a file's prose comments — the 'sees comments, writes more comments' pattern."),
-]
 
 
 def cmd_rules(args) -> int:
@@ -141,7 +156,7 @@ def cmd_rules(args) -> int:
             for r in all_rules()
         ] + [
             {"id": rid, "severity": sev, "title": title, "doc": doc_text, "gate_only": True}
-            for rid, sev, title, doc_text in _GATE_RULES
+            for rid, sev, title, doc_text in GATE_SIGNALS
         ]
         print(json.dumps(doc, indent=2))
         return 0
@@ -149,14 +164,16 @@ def cmd_rules(args) -> int:
         print(f"{r.id}  [{r.severity.name.lower():5}]  {r.title}")
         if r.doc:
             print(f"       {r.doc}")
-    for rid, sev, title, doc_text in _GATE_RULES:
+    for rid, sev, title, doc_text in GATE_SIGNALS:
         print(f"{rid}  [{sev:5}]  {title}")
         print(f"       {doc_text}")
     return 0
 
 
-def _add_common(p: argparse.ArgumentParser) -> None:
-    p.add_argument("paths", nargs="+", help="files or directories to scan")
+def _add_common(p: argparse.ArgumentParser, paths_required: bool = True) -> None:
+    p.add_argument("paths", nargs="+" if paths_required else "*",
+                   help="files or directories to scan"
+                   + ("" if paths_required else " (optional with --diff: restricts to these paths)"))
     p.add_argument("--format", choices=sorted(RENDERERS), default="text")
     p.add_argument("--fail-on", choices=["info", "warn", "error", "never"], default="warn",
                    help="lowest severity that causes exit code 1 (default: warn)")
@@ -185,9 +202,12 @@ def main(argv: list[str] | None = None) -> int:
     p_check.set_defaults(fn=cmd_check)
 
     p_gate = sub.add_parser("gate", help="judge only comments new relative to a baseline")
-    _add_common(p_gate)
-    p_gate.add_argument("--baseline", required=True,
+    _add_common(p_gate, paths_required=False)
+    p_gate.add_argument("--baseline",
                         help="baseline dir/file, or git:REF (e.g. git:HEAD, git:main)")
+    p_gate.add_argument("--diff", metavar="FILE",
+                        help="gate the files a unified diff changed, using the diff itself as the "
+                             "baseline ('-' reads the diff from stdin)")
     p_gate.set_defaults(fn=cmd_gate)
 
     p_rules = sub.add_parser("rules", help="list rules")

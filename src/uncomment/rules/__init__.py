@@ -34,6 +34,16 @@ def all_rules() -> list[Rule]:
     return list(_REGISTRY)
 
 
+# gate-only signals, synthesized in gate.py rather than registered as rules;
+# listed here so `rules` listings and SARIF metadata cover them
+GATE_SIGNALS: list[tuple[str, str, str, str]] = [
+    ("UC100", "error", "comment-flood (gate only)",
+     "Edit adds far more noisy comment lines than code lines relative to the baseline."),
+    ("UC101", "warn", "comment-amplification (gate only)",
+     "Edit multiplies a file's prose comments — the 'sees comments, writes more comments' pattern."),
+]
+
+
 _LICENSE_RE = re.compile(
     r"copyright|license|licence|permission is hereby granted|spdx-license|apache|gnu general public|redistribution and use",
     re.IGNORECASE,

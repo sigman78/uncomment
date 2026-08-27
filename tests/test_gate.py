@@ -104,9 +104,9 @@ def test_missing_baseline_treats_all_as_new(tmp_path):
     assert any(f.rule == "UC003" for f in findings)
 
 
-def test_git_baseline(tmp_path):
+def _git_repo(tmp_path: Path) -> Path:
+    """A fresh git repo, or skip the test when git is unavailable."""
     import shutil
-    import subprocess
 
     import pytest
 
@@ -114,24 +114,56 @@ def test_git_baseline(tmp_path):
         pytest.skip("git not available")
     repo = tmp_path / "repo"
     repo.mkdir()
+    _git(repo, "init", "-q")
+    return repo
 
-    def git(*args):
-        subprocess.run(
-            ["git", *args], cwd=repo, check=True, capture_output=True,
-            env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
-                 "GIT_COMMITTER_EMAIL": "t@t", "PATH": __import__("os").environ["PATH"]},
-        )
 
-    git("init", "-q")
+def _git(repo: Path, *args: str) -> None:
+    import os
+    import subprocess
+
+    subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True,
+        env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+             "GIT_COMMITTER_EMAIL": "t@t", "PATH": os.environ["PATH"]},
+    )
+
+
+def test_git_baseline(tmp_path):
+    repo = _git_repo(tmp_path)
     f = repo / "a.js"
     f.write_text(OLD, encoding="utf-8")
-    git("add", "a.js")
-    git("commit", "-q", "-m", "base")
+    _git(repo, "add", "a.js")
+    _git(repo, "commit", "-q", "-m", "base")
     f.write_text(NEW, encoding="utf-8")
 
     findings, _, stats = gate_file(f, "git:HEAD", repo, Config())
     assert stats["new_comments"] == 2
     assert {x.rule for x in findings} >= {"UC002", "UC003"}
+
+
+def test_git_baseline_multi_file_rename(tmp_path):
+    """Several files against one git baseline (exercises the cat-file batch)
+    plus a rename, which pulls in the ls-tree sweep."""
+    repo = _git_repo(tmp_path)
+    (repo / "a.js").write_text(OLD, encoding="utf-8")
+    (repo / "b.js").write_text(
+        "// Retry twice: the registry drops the first request under load.\nexport const N = 2;\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "a.js", "b.js")
+    _git(repo, "commit", "-q", "-m", "base")
+
+    (repo / "a.js").write_text(NEW, encoding="utf-8")
+    (repo / "b.js").rename(repo / "c.js")  # rename: c.js has no HEAD counterpart
+
+    result = gate_paths([repo], "git:HEAD", Config())
+    assert result.files_scanned == 2
+    # the renamed file's comment matched through the tree sweep; only the
+    # two noisy comments added to a.js are new
+    assert result.new_comments == 2
+    assert {f.rule for f in result.findings} >= {"UC002", "UC003"}
+    assert all(str(f.path).endswith("a.js") for f in result.findings)
 
 
 def test_gate_paths_aggregates(tmp_path):
