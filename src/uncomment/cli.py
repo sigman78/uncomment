@@ -119,7 +119,7 @@ _STDOUT_WAS_UTF8 = True
 
 
 def _emit_and_exit(findings, stats, args, cfg) -> int:
-    out = RENDERERS[args.format](findings, stats)
+    out = RENDERERS[args.format](findings, stats, cfg)
     unicode_ok = cfg.unicode_output if cfg.unicode_output is not None else _STDOUT_WAS_UTF8
     if args.ascii or not unicode_ok:
         out = to_ascii(out)

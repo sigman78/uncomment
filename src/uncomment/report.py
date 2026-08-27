@@ -33,7 +33,7 @@ def _loc(f: Finding) -> str:
     return f"L{f.line}" if f.line == f.end_line else f"L{f.line}-L{f.end_line}"
 
 
-def render_text(findings: list[Finding], stats: dict) -> str:
+def render_text(findings: list[Finding], stats: dict, cfg=None) -> str:
     out: list[str] = []
     for f in findings:
         out.append(f"{f.path}:{f.line}: [{_SEV_LABEL[f.severity]}] {f.rule} {f.message}")
@@ -52,7 +52,7 @@ def render_text(findings: list[Finding], stats: dict) -> str:
     return "\n".join(out)
 
 
-def render_json(findings: list[Finding], stats: dict) -> str:
+def render_json(findings: list[Finding], stats: dict, cfg=None) -> str:
     counts = Counter(f.severity for f in findings)
     doc = {
         "schema_version": SCHEMA_VERSION,
@@ -69,31 +69,60 @@ def render_json(findings: list[Finding], stats: dict) -> str:
     return json.dumps(doc, indent=2)
 
 
-_POLICY = """\
-# Comment review feedback
+# policy points paired with the rule families they correct; the preamble
+# emits only the points the findings actually need, so a one-rule report
+# does not spend the agent's context on seven unrelated instructions
+_POLICY_POINTS: list[tuple[tuple[str, ...], str]] = [
+    (("UC001", "UC007"),
+     "Comments explain WHY, never WHAT. If a comment restates the adjacent code, delete it."),
+    (("UC003",),
+     'Never describe the edit you made ("added X", "changed Y", "as requested"). '
+     "That history belongs in the commit message."),
+    (("UC002",),
+     'Do not narrate your process ("now we...", "first...", "step 1"). State intent once, briefly.'),
+    (("UC005",),
+     "Delete commented-out code; version control preserves it."),
+    (("UC004", "UC010"),
+     'Delete banner/divider and label comments ("// helpers", "// end of loop").'),
+    (("UC006", "UC008", "UC100", "UC101"),
+     "Long guide-level prose belongs in project docs or a doc comment, not inside code."),
+    (("STE",),
+     "Wording follows Simplified Technical English: short sentences (max 20 words), "
+     "active voice, simple common words."),
+]
 
-An automated comment linter reviewed your changes. Fix every item below, then
-re-run the check. Comment policy:
+# guardrails hold in every report: they prevent overcorrection
+_POLICY_GUARD = (
+    "API documentation on public interfaces (header files, exported symbols, "
+    "Doxygen/JSDoc/rustdoc) is WANTED — prune noise, never strip real docs. "
+    "Existing comments nearby are not an invitation to add more."
+)
 
-1. Comments explain WHY, never WHAT. If a comment restates the adjacent code, delete it.
-2. Never describe the edit you made ("added X", "changed Y", "as requested").
-   That history belongs in the commit message.
-3. Do not narrate your process ("now we...", "first...", "step 1"). State intent once, briefly.
-4. Delete commented-out code; version control preserves it.
-5. Delete banner/divider and label comments ("// helpers", "// end of loop").
-6. Long guide-level prose belongs in project docs or a doc comment, not inside code.
-7. Wording follows Simplified Technical English: short sentences (max 20 words),
-   active voice, simple common words.
-8. API documentation on public interfaces (header files, exported symbols,
-   Doxygen/JSDoc/rustdoc) is WANTED — prune noise, never strip real docs.
-   Existing comments nearby are not an invitation to add more.
-
-When you delete a comment, delete only the comment; never change the code around it
-unless an item explicitly asks for it.
-"""
+_POLICY_CLOSING = (
+    "When you delete a comment, delete only the comment; never change the code around it\n"
+    "unless an item explicitly asks for it.\n"
+)
 
 
-def render_agent(findings: list[Finding], stats: dict) -> str:
+def _policy(findings: list[Finding], cfg) -> str:
+    fired = {f.rule for f in findings}
+    points = [
+        text for prefixes, text in _POLICY_POINTS
+        if any(rule.startswith(p) for rule in fired for p in prefixes)
+    ]
+    points.append(_POLICY_GUARD)
+    if cfg is not None:
+        points.extend(cfg.agent_policy)
+    numbered = "\n".join(f"{i}. {text}" for i, text in enumerate(points, 1))
+    return (
+        "# Comment review feedback\n\n"
+        "An automated comment linter reviewed your changes. Fix every item below, then\n"
+        "re-run the check. Comment policy:\n\n"
+        f"{numbered}\n\n{_POLICY_CLOSING}"
+    )
+
+
+def render_agent(findings: list[Finding], stats: dict, cfg=None) -> str:
     if not findings:
         return "# Comment review feedback\n\nNo comment issues found. No action needed.\n"
 
@@ -102,7 +131,7 @@ def render_agent(findings: list[Finding], stats: dict) -> str:
     wording = [f for f in findings if f.rule.startswith("STE")]
     hints = [f for f in findings if f.severity == Severity.INFO and f.rule != "UC008" and not f.rule.startswith("STE")]
 
-    out = [_POLICY]
+    out = [_policy(findings, cfg)]
 
     def section(title: str, items: list[Finding], required: bool) -> None:
         if not items:
@@ -113,12 +142,21 @@ def render_agent(findings: list[Finding], stats: dict) -> str:
             by_path.setdefault(f.path, []).append(f)
         for path, fs in by_path.items():
             out.append(f"### `{path}`\n")
+            # one group per (rule, action): the instruction prints once, the
+            # sites list stays one line each
+            groups: dict[tuple[str, str], list[Finding]] = {}
             for f in fs:
-                mark = "MUST FIX" if required and f.severity >= Severity.WARN else "consider"
-                out.append(f"- **{_loc(f)}** `{f.rule}` [{mark}]: {f.message}")
-                if f.excerpt:
-                    out.append(f"  - comment: `{f.excerpt}`")
-                out.append(f"  - action: {f.action}")
+                groups.setdefault((f.rule, f.action), []).append(f)
+            for (rule_id, action), grouped in groups.items():
+                head = grouped[0]
+                mark = "MUST FIX" if required and any(g.severity >= Severity.WARN for g in grouped) else "consider"
+                count = f" ×{len(grouped)}" if len(grouped) > 1 else ""
+                label = f" — {head.message}" if head.excerpt else ""
+                out.append(f"- `{rule_id}` [{mark}]{count}{label}")
+                out.append(f"  fix: {action}")
+                for f in grouped:
+                    detail = f"`{f.excerpt}`" if f.excerpt else f.message
+                    out.append(f"  - **{_loc(f)}**: {detail}")
             out.append("")
 
     section("Comments to delete or fix", gating, required=True)
@@ -143,7 +181,7 @@ def _artifact_uri(path: str) -> str:
     return p.as_uri() if p.is_absolute() else p.as_posix()
 
 
-def render_sarif(findings: list[Finding], stats: dict) -> str:
+def render_sarif(findings: list[Finding], stats: dict, cfg=None) -> str:
     from . import __version__
     from .rules import GATE_SIGNALS, all_rules
 

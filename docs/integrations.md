@@ -21,10 +21,15 @@ ASCII for legacy terminals and log processors.
 - `--format json` — stable machine schema (`schema_version: 1`): findings
   with `rule`, `severity`, `path`, `line`, `end_line`, `message`, `action`,
   `excerpt`, plus summary counts and gate stats.
-- `--format agent` — a ready-to-send corrective prompt: the comment policy,
-  then per-file items marked **MUST FIX** (warn/error) or *consider* (hints),
-  each with the offending excerpt and the concrete action. Feed this back to
-  the agent that made the edit and re-run the gate on its next attempt.
+- `--format agent` — a ready-to-send corrective prompt, built to spend as
+  little of the receiving agent's context as possible: the policy preamble
+  lists only the points whose rules actually fired (guardrails always
+  included, plus any [`agent-policy`](configuration.md#agent-policy) house
+  rules), and repeated findings group per rule — the fix instruction prints
+  once, the sites stay one line each (`×182` findings cost 182 short lines,
+  not 182 repeated paragraphs). Items are marked **MUST FIX** (warn/error)
+  or *consider* (hints). Feed this back to the agent that made the edit and
+  re-run the gate on its next attempt.
 - `--format sarif` — SARIF 2.1.0 for GitHub code scanning and other
   annotators: rule metadata with default levels, per-finding regions and
   snippets, error/warn/info mapped to error/warning/note.
