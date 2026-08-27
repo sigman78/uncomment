@@ -29,7 +29,9 @@ Exit codes: `0` clean, `1` gated findings, `2` bad input — always loud, never
 a silently green gate. **`check`** scans every comment; **`gate`** compares
 against a baseline (directory, `git:REF`, or a unified diff) and judges only
 comments that are genuinely new — moves, typo fixes, and renames are never
-re-judged. Configuration lives in `uncomment.toml` or `pyproject.toml`
+re-judged. Scans respect `.gitignore` and skip generated files by default,
+with `include`/`exclude` globs for the rest, so `uncomment check .` behaves
+on real trees. Configuration lives in `uncomment.toml` or `pyproject.toml`
 (`[tool.uncomment]`), discovered upward from the scanned path.
 
 ## Integration
