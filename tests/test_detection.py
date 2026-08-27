@@ -58,6 +58,21 @@ def test_narration_on_continuation_line_is_caught():
     assert "UC002" in _fired("t.c", src, C)
 
 
+def test_lets_encrypt_product_name_is_not_narration():
+    src = "// Let's Encrypt rate-limits renewals to five per week.\nrenew();\n"
+    assert "UC002" not in _fired("t.js", src, JS)
+
+
+def test_lowercase_lets_verb_is_still_narration():
+    src = "function f() {\n  // let's encrypt the payload before sending\n  return seal(p);\n}\n"
+    assert "UC002" in _fired("t.js", src, JS)
+
+
+def test_capital_lets_with_lowercase_verb_is_still_narration():
+    src = "function f() {\n  // Let's walk the tree and collect the ids\n  return walk(t);\n}\n"
+    assert "UC002" in _fired("t.js", src, JS)
+
+
 # ---- UC004: diagrams are not banners ----
 
 def test_box_diagram_is_not_a_banner():

@@ -58,9 +58,11 @@ def restates_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             )
 
 
+# narration "let's" always precedes a lowercase verb ("let's iterate"); a
+# capitalized word after it is a product name ("Let's Encrypt"), not a story
 _NARRATION_START_RE = re.compile(
     r"^(now,? we |now that we |first,|first we |then |next,? we |finally,? we |finally, |lastly[,: ]"
-    r"|we |let'?s |here,? we |i |start by |begin by |the following |below,? we |step \d)",
+    r"|we |let'?s (?=(?-i:[a-z]))|here,? we |i |start by |begin by |the following |below,? we |step \d)",
     re.IGNORECASE,
 )
 _STEP_NUMBER_RE = re.compile(r"^\d+[.)]\s+\w")
