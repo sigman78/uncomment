@@ -179,11 +179,15 @@ class _PathBaseline:
             return candidate.read_text(encoding="utf-8-sig", errors="replace"), candidate.resolve()
         return None, candidate.resolve()
 
-    def tree_files(self, anchor: Path, consumed: set) -> list[tuple[str, str]]:
+    def tree_files(self, anchor: Path, consumed: set, cfg: Config) -> list[tuple[str, str]]:
+        from .filtering import selected
+
         out = []
         if self.base.is_dir():
             for p in sorted(self.base.rglob("*")):
                 if not p.is_file() or p.suffix.lower() not in EXTENSIONS or p.resolve() in consumed:
+                    continue
+                if not selected(p.relative_to(self.base).as_posix(), cfg):
                     continue
                 out.append((str(p), p.read_text(encoding="utf-8-sig", errors="replace")))
         return out
@@ -218,7 +222,9 @@ class _GitBaseline:
             return None, rel
         return data.decode("utf-8-sig", "replace"), rel
 
-    def tree_files(self, anchor: Path, consumed: set) -> list[tuple[str, str]]:
+    def tree_files(self, anchor: Path, consumed: set, cfg: Config) -> list[tuple[str, str]]:
+        from .filtering import selected
+
         top = _git_repo_top(anchor if anchor.is_dir() else anchor.parent)
         if top is None:
             return []
@@ -232,7 +238,7 @@ class _GitBaseline:
         out = []
         batch = self._batch(top)
         for rel in listing:
-            if rel in consumed or Path(rel).suffix.lower() not in EXTENSIONS:
+            if rel in consumed or Path(rel).suffix.lower() not in EXTENSIONS or not selected(rel, cfg):
                 continue
             data = batch.read(f"{self.ref}:{rel}")
             if data is not None:
@@ -256,7 +262,7 @@ class _DiffBaseline:
         key = new_path.resolve()
         return self._old.get(key), key
 
-    def tree_files(self, anchor: Path, consumed: set) -> list[tuple[str, str]]:
+    def tree_files(self, anchor: Path, consumed: set, cfg: Config) -> list[tuple[str, str]]:
         return []
 
     def close(self) -> None:
@@ -273,7 +279,7 @@ def _tree_norms(provider, anchor: Path, consumed: set, cfg: Config) -> Counter:
     """Comment norms from baseline files that were not per-file counterparts —
     loaded only when a scanned file lacks a counterpart (rename/new file)."""
     pool: Counter = Counter()
-    for path_label, text in provider.tree_files(anchor, consumed):
+    for path_label, text in provider.tree_files(anchor, consumed, cfg):
         spec = spec_for_path(path_label)
         if spec is None:
             continue
@@ -457,7 +463,7 @@ def gate_paths(paths: list[Path], baseline: str, cfg: Config, root: Path | None 
     files: list[Path] = []
     for path in paths:
         file_root = root or (path if path.is_dir() else path.parent)
-        for f in discover_files([path]):
+        for f in discover_files([path], cfg):
             if f not in roots:
                 roots[f] = file_root
                 files.append(f)
@@ -499,10 +505,12 @@ def gate_diff(diff_text: str, cfg: Config, restrict: list[Path] | None = None,
     files: list[Path] = []
     skipped = 0
 
+    from .filtering import is_generated, selected
+
     for fp in parse_diff(diff_text):
         if fp.new_path is None or fp.binary:
             continue
-        if Path(fp.new_path).suffix.lower() not in EXTENSIONS:
+        if Path(fp.new_path).suffix.lower() not in EXTENSIONS or not selected(fp.new_path, cfg):
             skipped += 1
             continue
         disk = _locate_diff_file(fp.new_path, root)
@@ -511,6 +519,9 @@ def gate_diff(diff_text: str, cfg: Config, restrict: list[Path] | None = None,
                 f"file from diff not found on disk: {fp.new_path} "
                 "(stale diff, or run from the directory the diff paths are relative to)"
             )
+        if cfg.skip_generated and is_generated(disk):
+            skipped += 1
+            continue
         resolved = disk.resolve()
         if limits is not None and not any(resolved == lim or resolved.is_relative_to(lim) for lim in limits):
             continue

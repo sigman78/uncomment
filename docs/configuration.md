@@ -26,6 +26,10 @@ growth-factor = 1.0                # UC101: new prose lines >= factor * existing
 ste-max-sentence-words = 20
 ste-max-paragraph-sentences = 6
 max-hints-per-rule = 8             # collapse repetitive info hints per file
+include = ["src/**", "lib/**"]     # scan only matching files (empty = everything)
+exclude = ["_deps", "*.gen.go"]    # skip matching files/dirs (adds to built-in skips)
+skip-generated = true              # skip files with generated-code markers
+respect-gitignore = true           # drop files git ignores
 disable = ["STE02", "UC011"]       # rule ids or prefixes ("STE" disables all STE)
 directive-patterns = ["^MY-LINT:"] # extra tooling-directive regexes to exempt
 approved-terms = ["Let's Encrypt", "leverage"]  # vocabulary the wording rules skip
@@ -39,6 +43,37 @@ When `unicode-output` is not set, the tool decides automatically: output
 falls back to ASCII when stdout was not UTF-8-capable at startup (legacy
 Windows consoles and cp125x pipes), so captured output never shows `…`/`—`
 as mojibake. Set it explicitly to pin either behavior.
+
+## Input filtering
+
+`include` and `exclude` take gitignore-flavored globs, and the matching CLI
+flags (`--include`/`--exclude`, repeatable) add to the config's lists. A
+pattern without `/` matches any single path component — `exclude = ["_deps"]`
+prunes a `_deps` directory at any depth — while a pattern with `/` matches
+the whole path relative to the scanned root (`src/**`, `**/gen/*.py`). A file
+is scanned when it matches any include (or `include` is empty) and no
+exclude. Matching is case-sensitive.
+
+The filters apply wherever files are picked up implicitly: directory walks
+(`check` and path-mode `gate`), diff-mode file selection, and the gate's
+baseline tree sweep, so excluded files never feed cross-file matching
+either. A file named explicitly on the command line always scans — naming it
+is intent. The built-in skip list (`.git`, `node_modules`, `build`, `vendor`,
+`target`, …) always applies to walked trees; `exclude` extends it.
+
+Two more filters are on by default for walked trees: `respect-gitignore`
+drops files git ignores (one `git check-ignore` batch per scanned root;
+outside a repository it is a no-op — filtering fails open, never silently
+emptying a scan), and `skip-generated` skips files whose first 2KB carry a
+generated-code marker (`DO NOT EDIT` — matched case-sensitively so prose
+"do not edit this list" never hides a file — `@generated`, "automatically
+generated"). Directories carrying a signed `CACHEDIR.TAG` (the
+[Cache Directory Tagging Specification](https://bford.info/cachedir/), which
+cargo, uv, pip, and pytest write into the caches they create) are always
+pruned — the signature is verified, so an ordinary file named CACHEDIR.TAG
+never hides a tree, and scanning a tagged directory as the root still works.
+Together these make `uncomment check .` behave sensibly out of the box on
+real trees full of build output and codegen.
 
 ## disable and severity
 

@@ -26,11 +26,15 @@ SKIP_DIRS = frozenset(
 )
 
 
-def discover_files(paths: list[Path]) -> list[Path]:
+def discover_files(paths: list[Path], cfg=None) -> list[Path]:
     """Supported source files under the given paths. Skip-dirs apply only to
     directories *below* a scanned root, so a project living inside a directory
     named `build` or `vendor` still scans, and skipped trees (node_modules,
-    .git) are pruned without being walked. Duplicates are returned once."""
+    .git) are pruned without being walked. Include/exclude globs, gitignore,
+    and generated-file markers filter walked trees; a file named explicitly
+    always scans. Duplicates are returned once."""
+    from .filtering import drop_gitignored, is_cachedir_tagged, is_generated, matches_any, selected
+
     files: list[Path] = []
     seen: set[Path] = set()
 
@@ -45,11 +49,40 @@ def discover_files(paths: list[Path]) -> list[Path]:
             if path.suffix.lower() in EXTENSIONS:
                 add(path)
         elif path.is_dir():
+            walked: list[Path] = []
             for dirpath, dirnames, filenames in os.walk(path):
-                dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+                # a signed CACHEDIR.TAG marks the whole tree as tool-made
+                # cache; scanning a tagged dir AS the root remains intent
+                if (
+                    "CACHEDIR.TAG" in filenames
+                    and Path(dirpath) != path
+                    and is_cachedir_tagged(Path(dirpath))
+                ):
+                    dirnames[:] = []
+                    continue
+
+                def rel_of(name: str) -> str:
+                    return (Path(dirpath) / name).relative_to(path).as_posix()
+
+                # dirs prune on exclude only: an include like "src/**" must
+                # not prune the parents of the files it selects
+                dirnames[:] = sorted(
+                    d for d in dirnames
+                    if d not in SKIP_DIRS
+                    and (cfg is None or not matches_any(rel_of(d), cfg.exclude))
+                )
                 for fname in sorted(filenames):
-                    if Path(fname).suffix.lower() in EXTENSIONS:
-                        add(Path(dirpath) / fname)
+                    if Path(fname).suffix.lower() not in EXTENSIONS:
+                        continue
+                    if cfg is not None and not selected(rel_of(fname), cfg):
+                        continue
+                    walked.append(Path(dirpath) / fname)
+            if cfg is not None and cfg.respect_gitignore:
+                walked = drop_gitignored(path, walked)
+            for f in walked:
+                if cfg is not None and cfg.skip_generated and is_generated(f):
+                    continue
+                add(f)
     return files
 
 
@@ -71,6 +104,8 @@ def _load_config(args) -> object:
     cfg = load_config(args.paths[0] if args.paths else ".", args.config)
     if args.disable:
         cfg.disable = list(cfg.disable) + parse_disable_arg(args.disable)
+    cfg.include = list(cfg.include) + args.include
+    cfg.exclude = list(cfg.exclude) + args.exclude
     return cfg
 
 
@@ -98,7 +133,7 @@ def _emit_and_exit(findings, stats, args, cfg) -> int:
 def cmd_check(args) -> int:
     paths = _validated_paths(args.paths)
     cfg = _load_config(args)
-    files = discover_files(paths)
+    files = discover_files(paths, cfg)
     skipped = _skipped_explicit(paths)
     if skipped:
         print(f"uncomment: note: {skipped} unsupported file(s) skipped", file=sys.stderr)
@@ -185,6 +220,10 @@ def _add_common(p: argparse.ArgumentParser, paths_required: bool = True) -> None
                    help="lowest severity that causes exit code 1 (default: warn)")
     p.add_argument("--config", help="explicit config file (TOML)")
     p.add_argument("--disable", help="comma-separated rule ids/prefixes to disable (e.g. STE,UC011)")
+    p.add_argument("--include", action="append", default=[], metavar="GLOB",
+                   help="scan only files matching one of these patterns (repeatable; adds to config)")
+    p.add_argument("--exclude", action="append", default=[], metavar="GLOB",
+                   help="skip files/directories matching this pattern (repeatable; adds to config)")
     p.add_argument("--ascii", action="store_true",
                    help="restrict output to ASCII (also settable via unicode-output = false)")
 
