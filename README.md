@@ -51,6 +51,13 @@ new comments that triggered at least one finding. Adding a license header,
 API docs, or clean WHY-comments never floods; fourteen lines of narration
 still does.
 
+The *comment amplification* signal (`UC101`) targets the signature habit of
+over-eager agents: seeing existing comments and answering with more. When an
+edit adds `growth-min-lines` (6) or more prose comment lines to a file whose
+prose comments it at least doubles, UC101 fires on volume alone — even when
+every individual comment is worded cleanly enough to evade the per-comment
+rules. Documentation and license text never count on either side.
+
 ```console
 uncomment gate src/parser.c --baseline git:main --format agent
 ```
@@ -83,6 +90,7 @@ uncomment gate src/parser.c --baseline git:main --format agent
 | UC011 | info | TODO/FIXME without owner or ticket |
 | UC012 | warn | emoji/decorative symbols in comments; with `ascii-comments = true`, any non-ASCII character |
 | UC100 | error | (gate only) comment flood: edit adds far more *noisy* comment lines than code |
+| UC101 | warn | (gate only) comment amplification: edit multiplies a file's prose comments |
 | STE01 | info | sentence over 20 words (ASD-STE100 style) |
 | STE02 | info | passive voice |
 | STE03 | info | non-simple wording ("utilize" → use, "in order to" → to, …) |
@@ -90,8 +98,20 @@ uncomment gate src/parser.c --baseline git:main --format agent
 
 What is deliberately **not** flagged: license headers, module/package docs
 (Go `doc.go`, Rust `//!`), doc comments with real API content (params, errors,
-invariants), short WHY-comments ("because…", "workaround…", links), and
-anything already present in the baseline.
+invariants), short WHY-comments ("because…", "workaround…", links), ASCII
+tables and box diagrams, prose invariant sketches, and anything already
+present in the baseline.
+
+**Documentation in its rightful place stays.** Doxygen/JSDoc-tagged docs
+(`@brief`, `\param`, `@returns`…) and rustdoc conventional sections
+(`# Examples`, `# Errors`, `# Panics`, `# Safety`) mark structured API
+documentation; the docs-migration hint leaves them alone, and never suggests
+moving doc comments out of interface files (`.h`, `.hpp`, `.d.ts`) — that is
+where they belong. The agent feedback states this policy explicitly so an
+agent prunes noise without stripping real docs.
+
+`uncomment rules --format json` emits the full rule table (including the
+gate-only UC100/UC101) for harnesses that map findings to annotations.
 
 **Tooling directives are never judged.** Linter/compiler control comments are
 functional lines, so no rule sees them, they are never suggested for removal,
@@ -148,6 +168,8 @@ max-trailing-chars = 60            # UC009
 baseline-similarity = 0.85         # gate: this similar to baseline = same comment
 flood-ratio = 0.75                 # UC100: noisy new comment lines / new code lines
 flood-min-lines = 12
+growth-min-lines = 6               # UC101: new prose comment lines to consider amplification
+growth-factor = 1.0                # UC101: new prose lines >= factor * existing prose lines
 ste-max-sentence-words = 20
 max-hints-per-rule = 8             # collapse repetitive info hints per file
 disable = ["STE02", "UC011"]       # rule ids or prefixes ("STE" disables all STE)
