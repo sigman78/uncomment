@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 
 _BACKOFF_SECONDS = 0.05  # tuned against the staging registry
+_seen: dict = {}  # (src, dst) -> first "file:line" seen
 
 
 def fetch(client, key):

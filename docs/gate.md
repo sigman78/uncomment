@@ -39,10 +39,12 @@ Matching is staged so ordinary edits are never re-judged:
 ## Gate-only signals
 
 The *comment flood* signal (`UC100`, error) counts only **noisy** new comment
-lines — new comments that triggered at least one finding. Adding a license
-header, API docs, or clean WHY-comments never floods; fourteen lines of
-narration still does. Thresholds: `flood-min-lines` (12) noisy lines and more
-than `flood-ratio` (0.75) noisy comment lines per added code line.
+lines — new non-doc comments that triggered at least one **warn or error**
+finding. Adding a license header, API docs, or clean WHY-comments never
+floods, and info-tier hints (STE wording) can never compound into an error;
+fourteen lines of narration still does. Thresholds: `flood-min-lines` (12)
+noisy lines and more than `flood-ratio` (0.75) noisy comment lines per added
+code line.
 
 The *comment amplification* signal (`UC101`, warn) targets the signature
 habit of over-eager agents: seeing existing comments and answering with more.

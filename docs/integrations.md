@@ -64,10 +64,17 @@ To surface SARIF findings as GitHub code-scanning annotations:
 (`--fail-on never` when annotations alone should not fail the build; drop it
 to gate.)
 
-## Claude Code hook
+## Claude Code
 
-`.claude/settings.json` — blocks a noisy edit and shows the feedback to the
-agent:
+The field-proven setup uses three pieces:
+
+**1. A repo-root `uncomment.toml`** holding the project's thresholds,
+`approved-terms`, and any disabled rules, so every entry point (hook, CI,
+manual runs) judges identically.
+
+**2. A PostToolUse hook** (`.claude/settings.json`) that gates each agent
+edit against `git:HEAD` and, on findings, blocks the edit and feeds the
+corrective prompt back to the agent (exit 2 shows stderr to the agent):
 
 ```json
 {
@@ -82,3 +89,19 @@ agent:
   }
 }
 ```
+
+**3. A thin wrapper script** (e.g. `tools/check_comments.py`) that owns path
+scope — which directories are checked, which are skipped (vendored deps,
+build output, generated code) — and runs the branch-level gate
+(`gate <paths> --baseline git:origin/main --format agent`). The hook keeps
+the per-edit loop tight; the wrapper is what CI and humans run.
+
+Two practical notes from real deployments: the gate never re-judges
+pre-existing comments, so adopting the tool on a codebase with a large
+comment backlog does not block anyone; and the `--format agent` report is
+self-contained enough to hand to a cheap subagent that performs just the
+comment fixes, keeping the main agent's context clean.
+
+If the tool is not installed in the project, `uvx --from
+git+https://github.com/sigman78/uncomment uncomment …` works in both the
+hook and CI (about 0.6 s warm start).

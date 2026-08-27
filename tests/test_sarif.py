@@ -61,7 +61,7 @@ def test_sarif_gate_only_rules(tmp_path, capsys):
     old_dir.mkdir()
     new_dir.mkdir()
     (old_dir / "a.js").write_text("export function f() {\n  return 1;\n}\n", encoding="utf-8")
-    noise = "".join(f"// narrative filler line number {i} explaining nothing\n" for i in range(14))
+    noise = "".join(f"// then we run filler step number {i} of the plan\n" for i in range(14))
     (new_dir / "a.js").write_text(noise + "export function f() {\n  return 1;\n}\n", encoding="utf-8")
     doc = _run_sarif(capsys, ["gate", str(new_dir), "--baseline", str(old_dir)])
     run = doc["runs"][0]

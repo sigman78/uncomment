@@ -105,15 +105,29 @@ def overlap_ratio(comment_text: str, code: str) -> float:
     return hits / len(cwords)
 
 
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n\s*\n")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+|\n\s*\n")
+# spaced dashes and mapping arrows join independent clauses; a doc-tag table
+# without terminal periods must not read as one 50-word sentence
+_CLAUSE_SPLIT_RE = re.compile(r"\s+(?:—|–|--|->|=>)\s+")
+_TAG_LINE_RE = re.compile(r"^\s*[@\\]\w+")
 
 
 def sentences(text: str) -> list[str]:
-    """Naive sentence splitter; good enough for comment prose."""
-    flat = re.sub(r"\s+", " ", text).strip()
-    if not flat:
-        return []
-    return [s.strip() for s in _SENTENCE_SPLIT_RE.split(flat) if s.strip()]
+    """Naive sentence splitter; good enough for comment prose. Doc-tag lines
+    (@param, \\return) each start their own segment."""
+    blocks: list[list[str]] = [[]]
+    for line in text.splitlines():
+        if _TAG_LINE_RE.match(line):
+            blocks.append([])
+        blocks[-1].append(line)
+    out: list[str] = []
+    for block in blocks:
+        flat = re.sub(r"\s+", " ", "\n".join(block)).strip()
+        if not flat:
+            continue
+        for part in _SENTENCE_SPLIT_RE.split(flat):
+            out.extend(p.strip() for p in _CLAUSE_SPLIT_RE.split(part) if p.strip())
+    return out
 
 
 def first_line(text: str, limit: int = 72) -> str:

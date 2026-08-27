@@ -79,7 +79,7 @@ def test_moved_comment_is_not_new(tmp_path):
 
 def test_comment_flood(tmp_path):
     old = "export function f() {\n  return 1;\n}\n"
-    noise = "".join(f"// narrative filler line number {i} explaining nothing\n" for i in range(14))
+    noise = "".join(f"// then we run filler step number {i} of the plan\n" for i in range(14))
     new = noise + old
     old_dir = tmp_path / "old"
     new_dir = tmp_path / "new"

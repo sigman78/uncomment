@@ -356,10 +356,15 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
             )
         )
 
-    # flood counts only noisy lines: new comments with at least one finding.
-    # A license header or clean documentation never floods.
+    # flood counts only noisy lines: new NON-DOC comments with at least one
+    # warn/error finding. License headers and API docs never flood, and
+    # info-tier hints (STE wording) can never compound into an error.
+    gating_findings = [f for f in rule_findings if f.severity >= Severity.WARN]
+
     def is_noisy(c: Comment) -> bool:
-        return any(not (c.end_line < f.line or c.start_line > f.end_line) for f in rule_findings)
+        return c.kind is not Kind.DOC and any(
+            not (c.end_line < f.line or c.start_line > f.end_line) for f in gating_findings
+        )
 
     noisy_lines = sum(c.line_count for c in st.unmatched if is_noisy(c))
     if noisy_lines >= cfg.flood_min_lines and noisy_lines > cfg.flood_ratio * max(st.added_code_lines, 1):
