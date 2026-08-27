@@ -90,15 +90,23 @@ class _FileState:
     old_prose_lines: int = 0
 
 
+_repo_top_cache: dict[Path, Path | None] = {}
+
+
 def _git_repo_top(anchor_dir: Path) -> Path | None:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=anchor_dir, capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        return Path(out)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+    """One `git rev-parse` per directory, not per file — gates over hundreds
+    of files in one tree pay for a single subprocess."""
+    key = anchor_dir.resolve()
+    if key not in _repo_top_cache:
+        try:
+            out = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=anchor_dir, capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            _repo_top_cache[key] = Path(out)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            _repo_top_cache[key] = None
+    return _repo_top_cache[key]
 
 
 def _baseline_source(baseline: str, new_path: Path, new_root: Path) -> tuple[str | None, object]:
