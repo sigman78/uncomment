@@ -385,6 +385,19 @@ def boilerplate_label(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 
 _TODO_REF_RE = re.compile(r"\(\s*\w+\s*\)|#\d+|\b[A-Z][A-Z0-9]+-\d+\b|https?://")
 
+# emoji, pictographs, dingbats, decorative symbols — not general typography
+# (arrows, accented letters, CJK prose stay allowed unless ascii_comments)
+_EMOJI_RANGES = [
+    (0x2600, 0x27BF),    # misc symbols + dingbats
+    (0x2B00, 0x2BFF),    # misc symbols and arrows
+    (0xFE0F, 0xFE0F),    # variation selector 16
+    (0x200D, 0x200D),    # zero-width joiner (emoji sequences)
+    (0x1F000, 0x1FAFF),  # emoticons, pictographs, transport, supplemental
+    (0x1FB00, 0x1FBFF),  # symbols for legacy computing
+]
+_EMOJI_RE = re.compile("[" + "".join(f"{chr(a)}-{chr(b)}" for a, b in _EMOJI_RANGES) + "]")
+_NON_ASCII_RE = re.compile(r"[^\x00-\x7f]")
+
 
 @rule(
     "UC011",
@@ -402,4 +415,29 @@ def unowned_todo(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
                 c,
                 f"{m.group(0).upper()} has no owner or ticket",
                 "Add an owner or issue reference (TODO(name), #123), file a ticket, or remove it.",
+            )
+
+
+@rule(
+    "UC012",
+    "emoji-comment",
+    Severity.WARN,
+    "Emoji/decorative symbols in comments; any non-ASCII when ascii-comments is set.",
+)
+def emoji_comment(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
+    rx = _NON_ASCII_RE if cfg.ascii_comments else _EMOJI_RE
+    what = "non-ASCII characters" if cfg.ascii_comments else "emoji/decorative symbols"
+    for c in sf.comments:
+        if is_license_header(c):
+            continue
+        found = rx.findall(c.content)
+        if found:
+            unique = "".join(dict.fromkeys(ch for ch in found if ch.isprintable()))[:8]
+            shown = unique or " ".join(f"U+{ord(ch):04X}" for ch in dict.fromkeys(found))[:40]
+            yield _finding(
+                "UC012",
+                Severity.WARN,
+                c,
+                f"comment contains {what}: {shown}",
+                "Remove the decoration. Comments read best as plain text; symbols add no information.",
             )

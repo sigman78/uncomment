@@ -16,10 +16,32 @@ from pathlib import Path
 from .config import Config
 from .extract import extract_file, extract_source
 from .languages import spec_for_path
-from .model import Comment, Finding, Severity, SourceFile
+from .model import Comment, Finding, Severity, SourceFile, ToolError
 from .rules import run_rules, visible_comments
 
 _WS_RE = re.compile(r"\s+")
+
+
+def validate_baseline(baseline: str, anchor: Path) -> None:
+    """Fail fast (exit 2) on an unusable baseline instead of silently judging
+    every existing comment as new. A per-file miss inside a valid baseline
+    still means 'new file' and stays permitted."""
+    if baseline.startswith("git:"):
+        ref = baseline[4:] or "HEAD"
+        anchor_dir = anchor if anchor.is_dir() else anchor.parent
+        try:
+            subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+                cwd=anchor_dir, capture_output=True, check=True,
+            )
+        except FileNotFoundError:
+            raise ToolError("git executable not found; a git: baseline needs git on PATH") from None
+        except subprocess.CalledProcessError:
+            raise ToolError(
+                f"baseline ref '{ref}' not found (is {anchor_dir} inside a git repository?)"
+            ) from None
+    elif not Path(baseline).exists():
+        raise ToolError(f"baseline path does not exist: {baseline}")
 
 
 def _norm(comment: Comment) -> str:

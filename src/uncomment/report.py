@@ -15,6 +15,17 @@ SCHEMA_VERSION = 1
 
 _SEV_LABEL = {Severity.INFO: "info", Severity.WARN: "warn", Severity.ERROR: "error"}
 
+_ASCII_MAP = str.maketrans(
+    {"→": "->", "←": "<-", "…": "...", "—": "--", "–": "-", "·": "*",
+     "“": '"', "”": '"', "‘": "'", "’": "'", " ": " "}
+)
+
+
+def to_ascii(text: str) -> str:
+    """Transliterate the tool's own typography, then strip anything else
+    non-ASCII (source excerpts may contain arbitrary Unicode)."""
+    return text.translate(_ASCII_MAP).encode("ascii", "replace").decode("ascii")
+
 
 def _loc(f: Finding) -> str:
     return f"L{f.line}" if f.line == f.end_line else f"L{f.line}-L{f.end_line}"

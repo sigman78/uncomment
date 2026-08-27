@@ -23,7 +23,15 @@ uv run uncomment rules                           # list rules
 ```
 
 Exit codes: `0` clean (or below the `--fail-on` threshold), `1` gated findings,
-`2` usage/config error.
+`2` bad input. Failure is loud by design: nonexistent paths, an unverifiable
+`git:` baseline ref, and any invalid config key/type/value all exit `2` with a
+named cause — a typo can never produce a silently green gate. Explicitly named
+files in unsupported languages are counted in `files_skipped` and noted on
+stderr. `uncomment --version` prints the version.
+
+Output is UTF-8 regardless of console codepage; pass `--ascii` (or set
+`unicode-output = false`) to transliterate the tool's typography to plain
+ASCII for legacy terminals and log processors.
 
 ## The two modes
 
@@ -65,6 +73,7 @@ uncomment gate src/parser.c --baseline git:main --format agent
 | UC009 | warn | trailing comment too long to sit on the code line |
 | UC010 | warn | boilerplate labels: "// imports", "// helpers", "// end of loop" |
 | UC011 | info | TODO/FIXME without owner or ticket |
+| UC012 | warn | emoji/decorative symbols in comments; with `ascii-comments = true`, any non-ASCII character |
 | UC100 | error | (gate only) comment flood: edit adds far more comment lines than code |
 | STE01 | info | sentence over 20 words (ASD-STE100 style) |
 | STE02 | info | passive voice |
@@ -95,12 +104,16 @@ meaning. They never gate by default; raise them via config if you want them to.
 
 ## Configuration
 
-`uncomment.toml` (or `[tool.uncomment]` in `pyproject.toml`), discovered
-upward from the scanned path:
+`uncomment.toml` (bare keys or a `[tool.uncomment]` table — both work) or
+`[tool.uncomment]` in `pyproject.toml`, discovered upward from the scanned
+path. Unknown keys, wrong types, and invalid values are errors, not silent
+no-ops.
 
 ```toml
 [tool.uncomment]
 restate-overlap = 0.6              # UC001 word-overlap threshold
+ascii-comments = false             # UC012: true = flag ANY non-ASCII in comments
+unicode-output = true              # false = ASCII-only tool output (same as --ascii)
 max-function-comment-ratio = 0.4   # UC006
 doc-migration-lines = 12           # UC008
 max-trailing-chars = 60            # UC009
@@ -120,7 +133,9 @@ UC004 = "info"
 
 The contract is plain: run the gate after the agent edits, and if the exit
 code is `1`, hand the `--format agent` output back to the agent as its next
-instruction, then re-run. No harness-specific coupling.
+instruction, then re-run. No harness-specific coupling. Decide explicitly what
+exit `2` (bad path/baseline/config) means for your pipeline: the hook example
+below fails open on it; a stricter setup should fail closed.
 
 CI example:
 

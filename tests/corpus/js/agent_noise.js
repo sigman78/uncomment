@@ -23,3 +23,6 @@ export function slugify(text) {
   // replace the whitespace with dashes in order to normalize the slug text
   return text.replace(/\s+/g, "-");
 }
+
+// 🚀 fast path for small arrays ⚡
+export const FAST_LIMIT = 8;

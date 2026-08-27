@@ -6,6 +6,11 @@ import enum
 from dataclasses import dataclass, field
 
 
+class ToolError(Exception):
+    """User-facing failure: bad input path, baseline, config, or environment.
+    The CLI reports these as `uncomment: error: ...` with exit code 2."""
+
+
 class Kind(enum.Enum):
     LINE = "line"
     BLOCK = "block"

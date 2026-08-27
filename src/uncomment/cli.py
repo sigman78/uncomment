@@ -1,6 +1,7 @@
 """Command-line interface.
 
-Exit codes: 0 = clean (or below fail threshold), 1 = gated findings, 2 = usage error.
+Exit codes: 0 = clean (or below fail threshold), 1 = gated findings,
+2 = bad input (path, baseline, config) or environment error.
 """
 
 from __future__ import annotations
@@ -9,11 +10,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config import load_config
+from . import __version__
+from .config import load_config, parse_disable_arg
 from .extract import extract_file
 from .languages import EXTENSIONS
-from .model import Severity
-from .report import RENDERERS
+from .model import Severity, ToolError
+from .report import RENDERERS, to_ascii
 from .rules import all_rules, run_rules
 
 SKIP_DIRS = frozenset(
@@ -23,59 +25,102 @@ SKIP_DIRS = frozenset(
 
 
 def discover_files(paths: list[Path]) -> list[Path]:
+    """Supported source files under the given paths. Skip-dirs apply only to
+    directories *below* a scanned root, so a project living inside a directory
+    named `build` or `vendor` still scans. Duplicates are returned once."""
     files: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(p: Path) -> None:
+        resolved = p.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            files.append(p)
+
     for path in paths:
         if path.is_file():
             if path.suffix.lower() in EXTENSIONS:
-                files.append(path)
+                add(path)
         elif path.is_dir():
             for p in sorted(path.rglob("*")):
-                if p.is_file() and p.suffix.lower() in EXTENSIONS and not (set(p.parts) & SKIP_DIRS):
-                    files.append(p)
+                if not p.is_file() or p.suffix.lower() not in EXTENSIONS:
+                    continue
+                rel_dirs = set(p.relative_to(path).parts[:-1])
+                if rel_dirs & SKIP_DIRS:
+                    continue
+                add(p)
     return files
+
+
+def _validated_paths(raw_paths: list[str]) -> list[Path]:
+    paths = []
+    for raw in raw_paths:
+        p = Path(raw)
+        if not p.exists():
+            raise ToolError(f"path does not exist: {raw}")
+        paths.append(p)
+    return paths
+
+
+def _skipped_explicit(paths: list[Path]) -> int:
+    return sum(1 for p in paths if p.is_file() and p.suffix.lower() not in EXTENSIONS)
+
+
+def _load_config(args) -> object:
+    cfg = load_config(args.paths[0] if args.paths else ".", args.config)
+    if args.disable:
+        cfg.disable = list(cfg.disable) + parse_disable_arg(args.disable)
+    return cfg
 
 
 def _severity_arg(name: str) -> Severity | None:
     return None if name == "never" else Severity.parse(name)
 
 
-def _emit_and_exit(findings, stats, fmt: str, fail_on: Severity | None) -> int:
-    print(RENDERERS[fmt](findings, stats))
+def _emit_and_exit(findings, stats, args, cfg) -> int:
+    out = RENDERERS[args.format](findings, stats)
+    if args.ascii or not cfg.unicode_output:
+        out = to_ascii(out)
+    print(out)
+    fail_on = _severity_arg(args.fail_on)
     if fail_on is not None and any(f.severity >= fail_on for f in findings):
         return 1
     return 0
 
 
 def cmd_check(args) -> int:
-    cfg = load_config(args.paths[0] if args.paths else ".", args.config)
-    if args.disable:
-        cfg.disable = list(cfg.disable) + args.disable.split(",")
+    paths = _validated_paths(args.paths)
+    cfg = _load_config(args)
+    files = discover_files(paths)
+    skipped = _skipped_explicit(paths)
+    if skipped:
+        print(f"uncomment: note: {skipped} unsupported file(s) skipped", file=sys.stderr)
     findings = []
-    files = discover_files([Path(p) for p in args.paths])
     for f in files:
         sf = extract_file(f)
         if sf is not None:
             findings.extend(run_rules(sf, cfg))
-    stats = {"mode": "check", "files_scanned": len(files)}
-    return _emit_and_exit(findings, stats, args.format, _severity_arg(args.fail_on))
+    stats = {"mode": "check", "files_scanned": len(files), "files_skipped": skipped}
+    return _emit_and_exit(findings, stats, args, cfg)
 
 
 def cmd_gate(args) -> int:
-    from .gate import gate_paths
+    from .gate import gate_paths, validate_baseline
 
-    cfg = load_config(args.paths[0] if args.paths else ".", args.config)
-    if args.disable:
-        cfg.disable = list(cfg.disable) + args.disable.split(",")
-    result = gate_paths([Path(p) for p in args.paths], args.baseline, cfg)
+    paths = _validated_paths(args.paths)
+    cfg = _load_config(args)
+    validate_baseline(args.baseline, paths[0])
+    result = gate_paths(paths, args.baseline, cfg)
     stats = {
         "mode": "gate",
         "baseline": args.baseline,
         "files_scanned": result.files_scanned,
+        "files_skipped": _skipped_explicit(paths),
         "new_comments": result.new_comments,
         "new_comment_lines": result.new_comment_lines,
         "added_code_lines": result.added_code_lines,
     }
-    return _emit_and_exit(result.findings, stats, args.format, _severity_arg(args.fail_on))
+    return _emit_and_exit(result.findings, stats, args, cfg)
 
 
 def cmd_rules(args) -> int:
@@ -83,6 +128,8 @@ def cmd_rules(args) -> int:
         print(f"{r.id}  [{r.severity.name.lower():5}]  {r.title}")
         if r.doc:
             print(f"       {r.doc}")
+    print("UC100  [error]  comment-flood (gate mode only)")
+    print("       Edit adds far more comment lines than code lines relative to the baseline.")
     return 0
 
 
@@ -93,13 +140,22 @@ def _add_common(p: argparse.ArgumentParser) -> None:
                    help="lowest severity that causes exit code 1 (default: warn)")
     p.add_argument("--config", help="explicit config file (TOML)")
     p.add_argument("--disable", help="comma-separated rule ids/prefixes to disable (e.g. STE,UC011)")
+    p.add_argument("--ascii", action="store_true",
+                   help="restrict output to ASCII (also settable via unicode-output = false)")
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows consoles and pipes often default to legacy codepages; findings
+    # quote source comments, so the output must survive any encoding.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(
         prog="uncomment",
         description="Lint and gate overly detailed comments introduced by coding agents.",
     )
+    parser.add_argument("--version", action="version", version=f"uncomment {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_check = sub.add_parser("check", help="scan all comments in the given paths")
@@ -118,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.fn(args)
-    except (OSError, ValueError) as exc:
+    except (ToolError, OSError) as exc:
         print(f"uncomment: error: {exc}", file=sys.stderr)
         return 2
 
