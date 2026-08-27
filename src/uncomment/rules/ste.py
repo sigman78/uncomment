@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from ..config import Config
 from ..model import Finding, Severity, SourceFile
 from ..textutil import first_line, sentences
-from . import is_license_header, rule
+from . import is_license_header, rule, wording_text
 from .core import _looks_like_code
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -76,7 +76,7 @@ def passive_voice(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if _skip(c):
             continue
-        m = _PASSIVE_RE.search(_prose(c))
+        m = _PASSIVE_RE.search(wording_text(_prose(c), cfg))
         if m:
             yield Finding(
                 rule="STE02",
@@ -139,7 +139,7 @@ def unapproved_word(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if _skip(c):
             continue
-        prose = _prose(c).lower()
+        prose = wording_text(_prose(c), cfg).lower()
         hits: list[tuple[str, str]] = []
         for phrase, repl in PHRASES.items():
             if phrase in prose:

@@ -44,6 +44,34 @@ GATE_SIGNALS: list[tuple[str, str, str, str]] = [
 ]
 
 
+# compiled approved-terms patterns, keyed by the term list; one entry per
+# distinct config in a process, so the cache cannot grow unbounded
+_TERM_PATTERNS: dict[tuple[str, ...], re.Pattern | None] = {}
+
+
+def _term_pattern(terms: tuple[str, ...]) -> re.Pattern | None:
+    if terms not in _TERM_PATTERNS:
+        if not terms:
+            _TERM_PATTERNS[terms] = None
+        else:
+            # a term with an uppercase letter is a proper noun and matches
+            # exactly; all-lowercase vocabulary matches any case
+            parts = [
+                re.escape(t) if t != t.lower() else f"(?i:{re.escape(t)})"
+                for t in terms
+            ]
+            _TERM_PATTERNS[terms] = re.compile(r"(?<!\w)(?:" + "|".join(parts) + r")(?!\w)")
+    return _TERM_PATTERNS[terms]
+
+
+def wording_text(text: str, cfg: Config) -> str:
+    """Text as the wording rules (UC002/UC003/STE02/STE03) should see it:
+    occurrences of the project's approved terms are blanked out first, so a
+    product name or domain word cannot read as narration or bad vocabulary."""
+    pattern = _term_pattern(tuple(cfg.approved_terms))
+    return pattern.sub("", text) if pattern is not None else text
+
+
 _LICENSE_RE = re.compile(
     r"copyright|license|licence|permission is hereby granted|spdx-license|apache|gnu general public|redistribution and use",
     re.IGNORECASE,

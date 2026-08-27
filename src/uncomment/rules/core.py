@@ -10,7 +10,7 @@ from ..config import Config
 from ..languages import is_interface_file
 from ..model import Attachment, Comment, Finding, Kind, Severity, SourceFile
 from ..textutil import first_line, overlap_ratio
-from . import is_license_header, rule
+from . import is_license_header, rule, wording_text
 
 
 def _finding(rule_id: str, severity: Severity, c: Comment, message: str, action: str) -> Finding:
@@ -83,11 +83,12 @@ def narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         # the current time…"), which collides with narration openers — skip them
         if c.kind is Kind.DOC or is_license_header(c):
             continue
+        text = wording_text(c.content, cfg)
         # a WHY comment that happens to open with "We cannot… because…" is the
         # kind of comment this tool asks for — leave it alone
-        if _WHY_RE.search(c.content):
+        if _WHY_RE.search(text):
             continue
-        head, *rest = c.content.splitlines() or [""]
+        head, *rest = text.splitlines() or [""]
         if (
             _NARRATION_START_RE.match(head)
             or (c.in_function and _STEP_NUMBER_RE.match(head))
@@ -142,8 +143,9 @@ def change_narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if is_license_header(c):
             continue
-        head = c.content.splitlines()[0] if c.content else ""
-        if _CHANGE_INNER_RE.search(c.content):
+        text = wording_text(c.content, cfg)
+        head = text.splitlines()[0] if text else ""
+        if _CHANGE_INNER_RE.search(text):
             yield _finding(
                 "UC003",
                 Severity.ERROR,
