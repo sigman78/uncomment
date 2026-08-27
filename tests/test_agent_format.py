@@ -32,12 +32,14 @@ def test_repeated_rule_prints_action_once():
 
 
 def test_policy_lists_only_fired_families():
-    out = _agent(NARRATION_ONLY)  # UC002 only
+    out = _agent(NARRATION_ONLY)  # fires UC002 alone
     assert "Do not narrate your process" in out
-    assert "commented-out code" not in out       # UC005 point absent
-    assert "Never describe the edit" not in out  # UC003 point absent
-    assert "never strip real docs" in out        # the guardrail always holds
-    assert "delete only the comment" in out      # closing guardrail always holds
+    # the UC005 and UC003 points must be absent
+    assert "commented-out code" not in out
+    assert "Never describe the edit" not in out
+    # both guardrails hold in every report
+    assert "never strip real docs" in out
+    assert "delete only the comment" in out
 
 
 def test_output_stays_bounded_as_findings_repeat():
