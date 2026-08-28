@@ -80,6 +80,44 @@ def test_unsupported_and_deleted_are_conservative(tmp_path):
     assert details["gone.js"] == "file deleted"
 
 
+def test_pathless_verify_runs_git_itself(tmp_path, capsys, monkeypatch):
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    (repo / "a.js").write_text("// old note\nconst a = 1;\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "a.js"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "base"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    monkeypatch.chdir(repo)
+
+    (repo / "a.js").write_text("// reworded note about retries\nconst a = 1;\n", encoding="utf-8")
+    assert main(["verify"]) == 0
+    capsys.readouterr()
+
+    (repo / "a.js").write_text("// reworded note about retries\nconst a = 2;\n", encoding="utf-8")
+    assert main(["verify"]) == 1
+    assert "NOT comment-only" in capsys.readouterr().out
+
+
+def test_pathless_verify_rejects_non_git_baseline(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "base").mkdir()
+    assert main(["verify", "--baseline", str(tmp_path / "base")]) == 2
+    assert "git: baseline" in capsys.readouterr().err
+
+
 def test_cli_verify_stdin(tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     old = "// old\nconst a = 1;\n"

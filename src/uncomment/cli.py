@@ -217,9 +217,31 @@ def cmd_gate(args) -> int:
 
 
 def cmd_verify(args) -> int:
-    from .gate import verify_comments_only
+    import subprocess
 
-    problems = verify_comments_only(_read_diff(args.diff))
+    from .gate import validate_baseline, verify_comments_only
+
+    if args.diff and args.baseline:
+        raise ToolError("--diff and --baseline are mutually exclusive")
+    if args.diff:
+        diff_text = _read_diff(args.diff)
+    else:
+        # the pathless form: the tool runs git diff itself; --baseline
+        # git:REF verifies against a snapshot ref (git stash create) so a
+        # fixer's edits verify cleanly amid other uncommitted work
+        baseline = args.baseline or "git:HEAD"
+        if not baseline.startswith("git:"):
+            raise ToolError("verify needs a git: baseline (or --diff FILE|-)")
+        validate_baseline(baseline, Path("."))
+        proc = subprocess.run(
+            ["git", "diff", baseline[4:] or "HEAD", "--"], capture_output=True
+        )
+        if proc.returncode != 0:
+            detail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+            raise ToolError("git diff failed" + (f": {detail[0]}" if detail else ""))
+        diff_text = proc.stdout.decode("utf-8-sig", "replace")
+
+    problems = verify_comments_only(diff_text)
     if problems:
         for path, detail in problems:
             print(f"{path}: NOT comment-only: {detail}")
@@ -302,10 +324,13 @@ def main(argv: list[str] | None = None) -> int:
     p_gate.set_defaults(fn=cmd_gate)
 
     p_verify = sub.add_parser(
-        "verify", help="prove a unified diff touches comments only (for autonomous fixer loops)"
+        "verify", help="prove working-tree changes touch comments only (for autonomous fixer loops)"
     )
-    p_verify.add_argument("--diff", metavar="FILE", required=True,
-                          help="unified diff to verify ('-' reads stdin)")
+    p_verify.add_argument("--diff", metavar="FILE",
+                          help="verify this unified diff instead ('-' reads stdin)")
+    p_verify.add_argument("--baseline",
+                          help="git:REF to diff against (default git:HEAD; use a "
+                               "'git stash create' snapshot to scope to a fixer's own edits)")
     p_verify.set_defaults(fn=cmd_verify)
 
     p_rules = sub.add_parser("rules", help="list rules")

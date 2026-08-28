@@ -23,7 +23,7 @@ uvx --from git+https://github.com/sigman78/uncomment uncomment check .
 uv run uncomment check src/                      # scan everything
 uv run uncomment gate src/ --baseline git:HEAD   # judge only new comments
 git diff | uv run uncomment gate --diff -        # judge only what a diff added
-git diff | uv run uncomment verify --diff -      # prove a diff is comment-only
+uv run uncomment verify                          # prove working-tree changes are comment-only
 uv run uncomment rules                           # list rules
 ```
 

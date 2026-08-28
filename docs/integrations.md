@@ -48,7 +48,7 @@ open on it; a stricter setup should fail closed.
 ## CI
 
 ```console
-uncomment gate . --baseline git:origin/main --format agent > comment-feedback.md
+uncomment gate --baseline git:origin/main --format agent > comment-feedback.md
 git diff origin/main...HEAD | uncomment gate --diff - --format sarif > uncomment.sarif
 ```
 
@@ -115,15 +115,20 @@ mid-tier model handles them reliably (field-proven: a full-tree sweep of 726
 findings ran to zero with no code damage). Two pieces make the loop safe
 and cheap:
 
-**The verifier.** `uncomment verify --diff -` proves a unified diff touches
-*nothing but comments*: it strips comments from both sides of every changed
-file and requires the remaining code to be identical (deletions, binary
-changes, and unsupported languages count as violations — conservative by
-design). Any fixer loop should end with it; if the fixer drifted into code,
-the loop reverts instead of trusting. One caveat to know: tooling
-directives are comments to the verifier, so the fixer's instructions must
-forbid touching them — the gate never flags them, so a fixer following
-findings never will.
+**The verifier.** `uncomment verify` proves working-tree changes touch
+*nothing but comments*: it runs `git diff` itself (against `git:HEAD` by
+default, or `--baseline git:REF` — pass a `git stash create` snapshot to
+scope the proof to a fixer's own edits amid other uncommitted work;
+`--diff FILE|-` verifies an explicit diff instead). Both sides of every
+changed file are comment-stripped and the remaining code must be identical
+(deletions, binary changes, and unsupported languages count as violations —
+conservative by design). Any fixer loop should end with it; if the fixer
+drifted into code, the loop reverts instead of trusting. Two caveats:
+tooling directives are comments to the verifier, so the fixer's
+instructions must forbid touching them — the gate never flags them, so a
+findings-driven fixer never will; and `git diff` does not see untracked
+files, so a fixer must never create files (the subagent's tool list
+enforces Edit-only).
 
 **The fixer subagent** (recipe B — recommended). Save as
 `.claude/agents/comment-fixer.md`:
@@ -138,17 +143,18 @@ model: sonnet
 
 You fix comment-lint findings and nothing else.
 
-Procedure:
-1. Run: `uvx --from git+https://github.com/sigman78/uncomment uncomment gate --baseline git:HEAD --format agent`
-   (no paths: the tool asks git for the changed files itself, scoped by
-   the repo's uncomment.toml)
-2. Apply every MUST FIX item exactly as its action says. Delete only
+Procedure (uncomment = `uvx --from git+https://github.com/sigman78/uncomment uncomment`):
+1. Snapshot the tree before touching anything, so step 4 can prove YOUR
+   edits are comment-only even amid other uncommitted work:
+   `SNAP=$(git stash create); SNAP=${SNAP:-HEAD}`
+2. Run `uncomment gate --baseline git:HEAD --format agent` (no paths —
+   the tool asks git for the changed files, scoped by uncomment.toml).
+   Apply every MUST FIX item exactly as its action says. Delete only
    comments; never change code, strings, or tooling directives
    (eslint/noqa/MARK and similar control comments). Consider items are
    optional; apply them when the fix is obvious.
 3. Re-run the gate until it exits 0.
-4. Prove you touched only comments:
-   `git diff | uvx --from git+https://github.com/sigman78/uncomment uncomment verify --diff -`
+4. Prove you touched only comments: `uncomment verify --baseline git:$SNAP`
    If verify fails, revert your non-comment change and fix again.
 5. Report one line: files touched, findings fixed, verify result.
 ```
@@ -178,7 +184,7 @@ verifies, so the main agent never sees the noise at all:
 uncomment gate "$f" --baseline git:HEAD --format agent > /tmp/report.md || {
   claude -p --model sonnet --allowedTools "Read,Edit" \
     "$(cat /tmp/report.md) Fix only these comments in $f; touch nothing else."
-  git diff -- "$f" | uncomment verify --diff - || git checkout -- "$f"
+  uncomment verify || git checkout -- "$f"
   echo "comments auto-fixed in $f - re-read it before further edits" 1>&2
   exit 2
 }
