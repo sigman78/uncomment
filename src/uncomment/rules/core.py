@@ -59,10 +59,19 @@ def restates_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 
 
 # narration "let's" always precedes a lowercase verb ("let's iterate"); a
-# capitalized word after it is a product name ("Let's Encrypt"), not a story
+# capitalized word after it is a product name ("Let's Encrypt"), not a story.
+# A bare "we" needs a process verb: "we check the input" is a story, while
+# "We allocated a tail segment" or "We have a task" is state/invariant prose
+# that veteran humans write (seen in okio, Alamofire, jsoup)
+_WE_PROCESS_VERBS = (
+    "check|validate|call|return|create|build|iterate|loop|parse|convert|initialize|define"
+    "|declare|handle|process|fetch|load|store|compute|calculate|run|emit|skip|apply|wrap"
+    "|normalize|start|begin|make|try|add|remove|update|set|get"
+)
 _NARRATION_START_RE = re.compile(
     r"^(now,? we |now that we |first,|first we |then |next,? we |finally,? we |finally, |lastly[,: ]"
-    r"|we |let'?s (?=(?-i:[a-z]))|here,? we |i |start by |begin by |the following |below,? we |step \d)",
+    rf"|we (?=(?:{_WE_PROCESS_VERBS})\b)"
+    r"|let'?s (?=(?-i:[a-z]))|here,? we |i |start by |begin by |the following |below,? we |step \d)",
     re.IGNORECASE,
 )
 _STEP_NUMBER_RE = re.compile(r"^\d+[.)]\s+\w")
@@ -129,7 +138,10 @@ _CHANGE_INNER_RE = re.compile(
     # "no longer needed/necessary" is ownership/lifetime prose ("free the map
     # when it's no longer needed") — only behavioral change forms count
     r"|no longer (uses|calls|requires|relies)"
-    r"|instead of the (old|previous)|was (removed|changed|renamed|moved) (in|to|from))\b",
+    # uncomment-ignore[UC003]: this comment must quote the phrases the rule detects
+    # only the version-history form: "was removed from the stack" is runtime
+    # prose (jsoup's parser), "was removed in 2.0" is edit history
+    r"|instead of the (old|previous)|was (removed|changed|renamed|moved) in)\b",
     re.IGNORECASE,
 )
 
@@ -226,7 +238,14 @@ def banner(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 _STRONG_CODEISH_RES = [
     re.compile(r"[;{}]\s*$"),
     re.compile(r"^\s*[{}]\s*$"),
-    re.compile(r"^\s*(if|elif|for|while|switch|return|import|export|let|const|var|fn|func|def|pub|static|struct|class|case|else|try|catch|except|finally|with|raise|yield|assert)\b.*[;{()=:]"),
+    # a keyword line is code only with real clause syntax: a brace, an
+    # immediate paren, a plain assignment, or a python-style trailing colon.
+    # "if already a valid escape, pass; otherwise, escape" is English
+    re.compile(
+        r"^\s*(if|elif|for|while|switch|return|import|export|let|const|var|fn|func|def|pub|static"
+        r"|struct|class|case|else|try|catch|except|finally|with|raise|yield|assert)\b"
+        r"(.*[{(]|.*(?<![!<>=])=(?!=)|.*:\s*$)"
+    ),
     re.compile(r"^\s*#\s*(include|define|if|ifdef|ifndef|endif|pragma)\b"),
     # calls, incl. chained; the paren must follow the callee DIRECTLY, so a
     # range label like "Cyrillic (basic Russian + extensions)" stays prose
@@ -378,6 +397,11 @@ def redundant_doc(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             continue
         if c.line_count > 3 or _DOC_TAG_RE.search(c.content):
             continue
+        # an enum case's doc necessarily mirrors its name — the "signature"
+        # is just a name, and ecosystem lint (SwiftLint missing_docs, StyleCop
+        # SA1602) REQUIRES the doc to exist
+        if c.attached_code.lstrip().startswith("case "):
+            continue
         ratio = overlap_ratio(c.content, c.attached_code)
         if ratio >= cfg.redundant_doc_overlap and c.word_count >= 2:
             yield _finding(
@@ -465,9 +489,9 @@ def trailing_length(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if c.attachment is not Attachment.TRAILING:
             continue
-        # measure collapsed text so column-aligned comment blocks are not
-        # penalized for their alignment padding
-        chars = len(" ".join(c.text.split()))
+        # measure collapsed text, without URLs, so column alignment padding
+        # and citation links do not spend the brevity budget
+        chars = len(" ".join(_TRAILING_URL_RE.sub("", c.text).split()))
         over = []
         if chars > cfg.max_trailing_chars:
             over.append(f"{chars} chars (limit {cfg.max_trailing_chars})")
@@ -482,6 +506,8 @@ def trailing_length(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
                 "Delete it if it repeats the code; otherwise move it to its own line above, shortened.",
             )
 
+
+_TRAILING_URL_RE = re.compile(r"https?://\S+")
 
 _BOILERPLATE_RE = re.compile(
     r"^(imports?|includes?|usings?|variables?|globals?|constants?|fields?|members?|types?|"

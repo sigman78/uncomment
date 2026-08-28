@@ -29,8 +29,10 @@ class Config:
     min_interior_comment_lines: int = 4
     # UC008 doc migration: comment length that suggests real documentation
     doc_migration_lines: int = 12
-    # UC009 trailing comment limits
-    max_trailing_chars: int = 60
+    # UC009 trailing comment limits; 80 chars sits above median veteran
+    # practice (jsoup's house style medians at 75), the word cap catches
+    # agent chatter regardless
+    max_trailing_chars: int = 80
     max_trailing_words: int = 10
     # UC007 threshold
     redundant_doc_overlap: float = 0.75

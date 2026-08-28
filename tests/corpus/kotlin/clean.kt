@@ -20,3 +20,8 @@ fun bestOf(scores: List<Int>): Int {
 
 @Suppress("MagicNumber") // ktlint-disable no-magic-numbers
 val DEFAULT_CAPACITY = 128
+
+fun recycleTail(segment: Segment?) {
+    // We allocated a tail segment, but didn't end up needing it. Recycle!
+    segment?.recycle()
+}

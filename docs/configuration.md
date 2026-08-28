@@ -14,7 +14,7 @@ code-line-fraction = 0.5           # UC005: fraction of code-looking lines
 max-function-comment-ratio = 0.4   # UC006
 min-interior-comment-lines = 4     # UC006: lines before density counts
 doc-migration-lines = 12           # UC008
-max-trailing-chars = 60            # UC009
+max-trailing-chars = 80            # UC009 (collapsed text, URLs excluded)
 max-trailing-words = 10            # UC009
 ascii-comments = false             # UC012: true = flag ANY non-ASCII in comments
 unicode-output = true              # false = always ASCII; unset = automatic (see below)

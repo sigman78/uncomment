@@ -28,3 +28,11 @@ class Totals {
     }
     // CHECKSTYLE:ON
 }
+
+class ParserNotes {
+    // if already a valid escape, pass; otherwise, escape
+    static int checksum = 0; // reinitializes the accumulated checksum whenever the stream restarts
+
+    // [GET](https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.3) - generally idempotent
+    static final boolean GET_IDEMPOTENT = true;
+}
