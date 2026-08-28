@@ -49,3 +49,17 @@ int duty_estimate(int avg_cycles, int chunk, int core_hz);
 /* r=0xF8 -> bits[15:11]=11111; g=0, b=0 -> 0xF800 */
 
 unsigned short pack_rgb565(unsigned char r, unsigned char g, unsigned char b);
+
+/* supported sync modes:
+ *   fast - skip the checksum pass
+ *   safe - verify every block
+ *   auto - pick by transfer size
+ */
+static int sync_mode = 0;
+
+/* startup checklist:
+ *   - probe the sensor bus
+ *   - restore persisted calibration
+ *   - arm the watchdog before the first frame
+ */
+void boot_sequence(void);
