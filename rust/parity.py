@@ -3,9 +3,8 @@
 reference over the corpus (or any given paths).
 
 Compared per comment: start_line, end_line, col, kind, attachment, content,
-attached_code; per file: code_line_count, comment_line_count. Deliberately
-not compared until their port lands: is_directive, in_function,
-function_name.
+attached_code, is_directive, in_function, function_name; per file:
+code_line_count, comment_line_count, and the functions list.
 
 Usage: python rust/parity.py [paths...]   (default: tests/corpus)
 Exit 0 = parity, 1 = differences, 2 = harness failure.
@@ -22,7 +21,8 @@ sys.path.insert(0, str(REPO / "src"))
 from unwaffle.extract import extract_file  # noqa: E402
 from unwaffle.languages import EXTENSIONS  # noqa: E402
 
-FIELDS = ("start_line", "end_line", "col", "kind", "attachment", "content", "attached_code")
+FIELDS = ("start_line", "end_line", "col", "kind", "attachment", "content",
+          "attached_code", "is_directive", "in_function", "function_name")
 
 
 def py_dump(path: Path) -> dict | None:
@@ -41,8 +41,14 @@ def py_dump(path: Path) -> dict | None:
                 "attachment": c.attachment.value,
                 "content": c.content,
                 "attached_code": c.attached_code,
+                "is_directive": c.is_directive,
+                "in_function": c.in_function,
+                "function_name": c.function_name,
             }
             for c in sf.comments
+        ],
+        "functions": [
+            [f.name, f.start_line, f.end_line, f.body_line_count] for f in sf.functions
         ],
     }
 
@@ -93,6 +99,10 @@ def main(argv: list[str]) -> int:
                             f"  comment[{i}] line {p['start_line']} {field}: "
                             f"rust={r[field]!r} py={p[field]!r}"
                         )
+        rust_funcs = [[f["name"], f["start_line"], f["end_line"], f["body_line_count"]]
+                      for f in rust.get("functions", [])]
+        if rust_funcs != py["functions"]:
+            diffs.append(f"  functions: rust={rust_funcs} py={py['functions']}")
         if diffs:
             mismatched_files += 1
             print(f"DIFF {f}")

@@ -15,6 +15,7 @@ pub struct LangSpec {
     pub doc_by_convention_nodes: &'static [&'static str],
     /// Python: containers whose first string statement is a docstring.
     pub docstring_containers: &'static [&'static str],
+    pub function_nodes: &'static [&'static str],
 }
 
 const NONE: &[&str] = &[];
@@ -22,8 +23,13 @@ const C_DOC_LINE: &[&str] = &["///", "//!"];
 const C_DOC_BLOCK: &[&str] = &["/**", "/*!"];
 const JSDOC: &[&str] = &["/**"];
 
+const JS_FUNCS: &[&str] = &[
+    "function_declaration", "function_expression", "arrow_function",
+    "method_definition", "generator_function_declaration",
+];
+
 macro_rules! spec {
-    ($name:ident, $lang:expr, $marker:expr, $dl:expr, $db:expr, $conv:expr, $docstr:expr) => {
+    ($name:ident, $lang:expr, $marker:expr, $dl:expr, $db:expr, $conv:expr, $docstr:expr, $funcs:expr) => {
         pub static $name: LangSpec = LangSpec {
             name: $lang,
             line_marker: $marker,
@@ -31,27 +37,36 @@ macro_rules! spec {
             doc_block_prefixes: $db,
             doc_by_convention_nodes: $conv,
             docstring_containers: $docstr,
+            function_nodes: $funcs,
         };
     };
 }
 
-spec!(C, "c", "//", C_DOC_LINE, C_DOC_BLOCK, NONE, NONE);
-spec!(CPP, "cpp", "//", C_DOC_LINE, C_DOC_BLOCK, NONE, NONE);
-spec!(JS, "javascript", "//", NONE, JSDOC, NONE, NONE);
-spec!(TS, "typescript", "//", NONE, JSDOC, NONE, NONE);
-spec!(TSX, "tsx", "//", NONE, JSDOC, NONE, NONE);
-spec!(RUST, "rust", "//", C_DOC_LINE, C_DOC_BLOCK, NONE, NONE);
+spec!(C, "c", "//", C_DOC_LINE, C_DOC_BLOCK, NONE, NONE, &["function_definition"]);
+spec!(CPP, "cpp", "//", C_DOC_LINE, C_DOC_BLOCK, NONE, NONE,
+      &["function_definition", "lambda_expression"]);
+spec!(JS, "javascript", "//", NONE, JSDOC, NONE, NONE, JS_FUNCS);
+spec!(TS, "typescript", "//", NONE, JSDOC, NONE, NONE, JS_FUNCS);
+spec!(TSX, "tsx", "//", NONE, JSDOC, NONE, NONE, JS_FUNCS);
+spec!(RUST, "rust", "//", C_DOC_LINE, C_DOC_BLOCK, NONE, NONE,
+      &["function_item", "closure_expression"]);
 spec!(
     GO, "go", "//", NONE, NONE,
     &["function_declaration", "method_declaration", "type_declaration",
       "const_declaration", "var_declaration", "package_clause"],
-    NONE
+    NONE,
+    &["function_declaration", "method_declaration", "func_literal"]
 );
-spec!(PY, "python", "#", NONE, NONE, NONE, &["module", "function_definition", "class_definition"]);
-spec!(JAVA, "java", "//", NONE, JSDOC, NONE, NONE);
-spec!(CSHARP, "csharp", "//", &["///"], JSDOC, NONE, NONE);
-spec!(KOTLIN, "kotlin", "//", NONE, JSDOC, NONE, NONE);
-spec!(SWIFT, "swift", "//", &["///"], C_DOC_BLOCK, NONE, NONE);
+spec!(PY, "python", "#", NONE, NONE, NONE, &["module", "function_definition", "class_definition"],
+      &["function_definition", "lambda"]);
+spec!(JAVA, "java", "//", NONE, JSDOC, NONE, NONE,
+      &["method_declaration", "constructor_declaration", "lambda_expression"]);
+spec!(CSHARP, "csharp", "//", &["///"], JSDOC, NONE, NONE,
+      &["method_declaration", "constructor_declaration", "local_function_statement", "lambda_expression"]);
+spec!(KOTLIN, "kotlin", "//", NONE, JSDOC, NONE, NONE,
+      &["function_declaration", "lambda_literal"]);
+spec!(SWIFT, "swift", "//", &["///"], C_DOC_BLOCK, NONE, NONE,
+      &["function_declaration", "init_declaration", "lambda_literal"]);
 
 pub fn spec_for_path(path: &str) -> Option<(&'static LangSpec, Language)> {
     let ext = path.rsplit('.').next()?.to_ascii_lowercase();

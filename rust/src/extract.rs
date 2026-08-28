@@ -1,19 +1,19 @@
 //! Tree-sitter comment extraction, ported from src/unwaffle/extract.py.
 //!
-//! Parity so far: raw collection, line-run merging (doc-class and marker
-//! splits included), comment-byte masking, the full attachment cascade,
-//! kind classification, Go doc-by-convention, Python docstrings. Not yet
-//! ported: directive classification (is_directive stays false and
-//! directive-line merge splits are inert), function context.
+//! At parity: raw collection, line-run merging (doc-class, marker, and
+//! directive-line splits), comment-byte masking, the attachment cascade,
+//! kind classification, Go doc-by-convention, Python docstrings, directive
+//! classification, and function context.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::OnceLock;
 
 use regex::Regex;
 use tree_sitter::{Node, Parser};
 
+use crate::directives::{is_cgo_preamble, is_directive_text};
 use crate::languages::{is_comment_node, spec_for_path, LangSpec};
-use crate::model::{Attachment, Comment, Kind, SourceFile};
+use crate::model::{Attachment, Comment, FunctionInfo, Kind, SourceFile};
 
 /// A header comment directly above one of these lines documents the file,
 /// not the line.
@@ -27,12 +27,19 @@ fn import_line_re() -> &'static Regex {
     })
 }
 
+const NAME_NODE_TYPES: &[&str] = &[
+    "identifier", "field_identifier", "type_identifier", "property_identifier",
+    "destructor_name", "operator_name", "simple_identifier",
+];
+
 struct RawComment {
     text: String,
     start_row: usize,
     start_col: usize,
     end_row: usize,
     end_col: usize,
+    func_name: String,
+    in_function: bool,
     /// (container node type, container start row) for Python docstrings.
     docstring: Option<(&'static str, usize)>,
 }
@@ -113,6 +120,11 @@ fn marker_line(text: &str, spec: &LangSpec) -> bool {
     strip_markers(first, spec.line_marker).starts_with("unwaffle-ignore")
 }
 
+fn directive_line(text: &str, spec: &LangSpec) -> bool {
+    let first = text.split('\n').next().unwrap_or("");
+    is_directive_text(&strip_markers(first, spec.line_marker), spec.name, Some(Kind::Line))
+}
+
 fn classify_kind(text: &str, spec: &LangSpec) -> Kind {
     if spec.doc_block_prefixes.iter().any(|p| text.starts_with(p)) && !text.starts_with("/**/") {
         return Kind::Doc; // bare "/**/" separators are not docs
@@ -126,20 +138,66 @@ fn classify_kind(text: &str, spec: &LangSpec) -> Kind {
     Kind::Line
 }
 
+fn node_text(node: Node, data: &[u8]) -> String {
+    node.utf8_text(data).unwrap_or_default().to_string()
+}
+
+fn function_name(node: Node, data: &[u8]) -> String {
+    if let Some(name) = node.child_by_field_name("name") {
+        return node_text(name, data);
+    }
+    if let Some(declarator) = node.child_by_field_name("declarator") {
+        // depth-first through the declarator: the first name-like node wins
+        let mut queue = VecDeque::from([declarator]);
+        while let Some(n) = queue.pop_front() {
+            if NAME_NODE_TYPES.contains(&n.kind()) {
+                return node_text(n, data);
+            }
+            for i in (0..n.child_count() as u32).rev() {
+                queue.push_front(n.child(i).unwrap());
+            }
+        }
+    }
+    // kotlin's function_declaration carries no name field: the identifier
+    // sits among the direct children
+    for i in 0..node.child_count() as u32 {
+        let child = node.child(i).unwrap();
+        if NAME_NODE_TYPES.contains(&child.kind()) {
+            return node_text(child, data);
+        }
+    }
+    "<anonymous>".to_string()
+}
+
+fn function_body<'t>(node: Node<'t>) -> Option<Node<'t>> {
+    node.child_by_field_name("body").or_else(|| {
+        // kotlin/swift bodies are typed children without a field name
+        (0..node.child_count() as u32)
+            .filter_map(|i| node.child(i))
+            .find(|ch| matches!(ch.kind(), "function_body" | "block"))
+    })
+}
+
 struct Walk {
     raw: Vec<RawComment>,
+    functions: Vec<FunctionInfo>,
     /// First named non-comment node starting at each row (outermost wins).
     row_first_node: HashMap<usize, String>,
 }
 
-fn walk(root: Node, data: &[u8], spec: &'static LangSpec) -> Walk {
-    let mut w = Walk { raw: Vec::new(), row_first_node: HashMap::new() };
-    // docstring string-node id -> (container type, container row)
-    let mut docstring_nodes: HashMap<usize, (&'static str, usize)> = HashMap::new();
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
-        let comment = is_comment_node(node.kind());
-        if comment || docstring_nodes.contains_key(&node.id()) {
+fn walk(root: Node, data: &[u8], path: &str, spec: &'static LangSpec) -> Walk {
+    let mut w = Walk { raw: Vec::new(), functions: Vec::new(), row_first_node: HashMap::new() };
+    // docstring string-node id -> (container type, container row, outer func context)
+    let mut docstring_nodes: HashMap<usize, (&'static str, usize, String, bool)> = HashMap::new();
+    let mut stack: Vec<(Node, String, bool)> = vec![(root, String::new(), false)];
+    while let Some((node, func_name_ctx, in_func)) = stack.pop() {
+        let mut raw_ctx: Option<(String, bool, Option<(&'static str, usize)>)> = None;
+        if is_comment_node(node.kind()) {
+            raw_ctx = Some((func_name_ctx.clone(), in_func, None));
+        } else if let Some((container, row, outer_func, outer_in)) = docstring_nodes.get(&node.id()) {
+            raw_ctx = Some((outer_func.clone(), *outer_in, Some((container, *row))));
+        }
+        if let Some((fname, infn, docstring)) = raw_ctx {
             let text = node
                 .utf8_text(data)
                 .unwrap_or_default()
@@ -157,7 +215,9 @@ fn walk(root: Node, data: &[u8], spec: &'static LangSpec) -> Walk {
                 start_col: node.start_position().column,
                 end_row,
                 end_col,
-                docstring: docstring_nodes.get(&node.id()).copied(),
+                func_name: fname,
+                in_function: infn,
+                docstring,
             });
             continue;
         }
@@ -184,15 +244,32 @@ fn walk(root: Node, data: &[u8], spec: &'static LangSpec) -> Walk {
                         None
                     };
                     if let Some(t) = target {
-                        docstring_nodes.insert(t.id(), (container, node.start_position().row));
+                        docstring_nodes.insert(
+                            t.id(),
+                            (container, node.start_position().row, func_name_ctx.clone(), in_func),
+                        );
                     }
                     break; // only the first statement can be a docstring
                 }
             }
         }
+        let (mut child_func, mut child_in) = (func_name_ctx, in_func);
+        if spec.function_nodes.contains(&node.kind()) {
+            let name = function_name(node, data);
+            if let Some(body) = function_body(node) {
+                w.functions.push(FunctionInfo {
+                    path: path.to_string(),
+                    name: name.clone(),
+                    start_line: node.start_position().row + 1,
+                    end_line: node.end_position().row + 1,
+                    body_line_count: body.end_position().row - body.start_position().row + 1,
+                });
+            }
+            (child_func, child_in) = (name, true);
+        }
         for i in (0..node.child_count() as u32).rev() {
             if let Some(child) = node.child(i) {
-                stack.push(child);
+                stack.push((child, child_func.clone(), child_in));
             }
         }
     }
@@ -210,7 +287,7 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
     let data = source.as_bytes();
     let tree = parser.parse(data, None).expect("tree-sitter returns a tree for any input");
 
-    let w = walk(tree.root_node(), data, spec);
+    let w = walk(tree.root_node(), data, path, spec);
     let raw = &w.raw;
     let blines = byte_lines(data);
     let lines: Vec<String> = blines
@@ -268,8 +345,10 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
                     && rc.start_row == prev.end_row + 1
                     && rc.start_col == prev.start_col
                     && doc_class(&rc.text, spec) == doc_class(&prev.text, spec)
-                    // suppression-marker lines never merge with prose;
-                    // directive-line splits await the directives port
+                    // directive and suppression-marker lines never merge with
+                    // prose, so the prose part stays judged and the marker
+                    // keeps its scope
+                    && directive_line(&rc.text, spec) == directive_line(&prev.text, spec)
                     && marker_line(&rc.text, spec) == marker_line(&prev.text, spec)
             });
         if merges {
@@ -303,8 +382,8 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
                 end_line: last.end_row + 1,
                 col: first.start_col,
                 attached_code: attached,
-                in_function: false,
-                function_name: String::new(),
+                in_function: first.in_function,
+                function_name: first.func_name.clone(),
                 is_directive: false,
             });
             continue;
@@ -335,6 +414,7 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
         let mut kind = classify_kind(&raw_text, spec);
         if kind != Kind::Doc
             && matches!(attachment, Attachment::Preceding | Attachment::FileHeader)
+            && !first.in_function
             && !spec.doc_by_convention_nodes.is_empty()
             && w.row_first_node
                 .get(&(last.end_row + 1))
@@ -345,20 +425,31 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
             kind = Kind::Doc;
         }
 
+        let content = strip_markers(&raw_text, spec.line_marker);
+        let content_lines: Vec<&str> = content.split('\n').filter(|l| !l.trim().is_empty()).collect();
+        let content_head = content_lines.first().copied().unwrap_or("");
+        // line-comment groups are class-uniform (directive lines never merge
+        // with prose), so the head speaks for the group. A block comment is a
+        // directive only when it contains nothing but the directive — a prose
+        // essay hiding behind an eslint-disable first line stays judged.
+        let directive = is_cgo_preamble(spec.name, &attached)
+            || (is_directive_text(content_head, spec.name, Some(kind))
+                && (kind == Kind::Line || content_lines.len() == 1));
+
         comments.push(Comment {
             path: path.to_string(),
             lang: spec.name,
             kind,
             attachment,
-            content: strip_markers(&raw_text, spec.line_marker),
+            content,
             text: raw_text,
             start_line: first.start_row + 1,
             end_line: last.end_row + 1,
             col: first.start_col,
             attached_code: attached,
-            in_function: false,
-            function_name: String::new(),
-            is_directive: false,
+            in_function: first.in_function,
+            function_name: first.func_name.clone(),
+            is_directive: directive,
         });
     }
 
@@ -367,6 +458,7 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
         lang: spec.name,
         lines,
         comments,
+        functions: w.functions,
         code_line_count: code_rows.iter().filter(|&&c| c).count(),
         code_lines,
         comment_line_count: comment_rows.iter().filter(|&&c| c).count(),

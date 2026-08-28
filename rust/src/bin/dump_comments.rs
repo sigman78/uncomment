@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use unwaffle::extract::extract_path;
-use unwaffle::model::Comment;
+use unwaffle::model::{Comment, FunctionInfo};
 
 #[derive(Serialize)]
 struct FileDump {
@@ -12,6 +12,7 @@ struct FileDump {
     code_line_count: usize,
     comment_line_count: usize,
     comments: Vec<Comment>,
+    functions: Vec<FunctionInfo>,
 }
 
 fn main() {
@@ -25,6 +26,7 @@ fn main() {
                 code_line_count: sf.code_line_count,
                 comment_line_count: sf.comment_line_count,
                 comments: sf.comments,
+                functions: sf.functions,
             }),
             None => out.push(FileDump {
                 path: arg,
@@ -32,6 +34,7 @@ fn main() {
                 code_line_count: 0,
                 comment_line_count: 0,
                 comments: Vec::new(),
+                functions: Vec::new(),
             }),
         }
     }

@@ -74,12 +74,23 @@ pub struct Finding {
     pub excerpt: String,
 }
 
+/// A function/method span, used for per-function density rules.
+#[derive(Debug, Clone, Serialize)]
+pub struct FunctionInfo {
+    pub path: String,
+    pub name: String,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub body_line_count: usize,
+}
+
 #[derive(Debug)]
 pub struct SourceFile {
     pub path: String,
     pub lang: &'static str,
     pub lines: Vec<String>,
     pub comments: Vec<Comment>,
+    pub functions: Vec<FunctionInfo>,
     /// Lines with code on them; comment-only lines excluded.
     pub code_line_count: usize,
     /// Source with comment bytes blanked.
