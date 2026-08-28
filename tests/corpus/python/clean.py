@@ -11,6 +11,11 @@ import time
 
 _BACKOFF_SECONDS = 0.05  # tuned against the staging registry
 _seen: dict = {}  # (src, dst) -> first "file:line" seen
+_glyphs: dict = {}  # WxH: (normal BDF, bold BDF)
+_last_write = None  # None = never written (a bug)
+
+# Cyrillic (basic Russian + extensions)
+CYRILLIC_RANGE = (0x0400, 0x04FF)
 
 
 def fetch(client, key):

@@ -38,3 +38,14 @@ int keymap_lookup(int usage, int modifiers);
  * The caller must free the parsed report map when it is no longer needed.
  */
 void *parse_report_map(const char *raw);
+
+/* LI=0 VN=3 Mode=3 client */
+static const unsigned char sntp_first_byte = 0x1B;
+
+/* duty = avg_cycles/chunk * chunks/s / core_hz; tenths of a percent */
+
+int duty_estimate(int avg_cycles, int chunk, int core_hz);
+
+/* r=0xF8 -> bits[15:11]=11111; g=0, b=0 -> 0xF800 */
+
+unsigned short pack_rgb565(unsigned char r, unsigned char g, unsigned char b);

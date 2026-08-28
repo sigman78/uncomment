@@ -133,7 +133,7 @@ def render_agent(findings: list[Finding], stats: dict, cfg=None) -> str:
 
     out = [_policy(findings, cfg)]
 
-    def section(title: str, items: list[Finding], required: bool) -> None:
+    def section(title: str, items: list[Finding]) -> None:
         if not items:
             return
         out.append(f"\n## {title}\n")
@@ -149,7 +149,11 @@ def render_agent(findings: list[Finding], stats: dict, cfg=None) -> str:
                 groups.setdefault((f.rule, f.action), []).append(f)
             for (rule_id, action), grouped in groups.items():
                 head = grouped[0]
-                mark = "MUST FIX" if required and any(g.severity >= Severity.WARN for g in grouped) else "consider"
+                # the mark mirrors EFFECTIVE severity, config promotions and
+                # demotions included: agents follow the label literally, and
+                # a promoted rule labeled "consider" gets skipped while still
+                # failing the gate
+                mark = "MUST FIX" if any(g.severity >= Severity.WARN for g in grouped) else "consider"
                 count = f" ×{len(grouped)}" if len(grouped) > 1 else ""
                 label = f" — {head.message}" if head.excerpt else ""
                 out.append(f"- `{rule_id}` [{mark}]{count}{label}")
@@ -159,10 +163,10 @@ def render_agent(findings: list[Finding], stats: dict, cfg=None) -> str:
                     out.append(f"  - **{_loc(f)}**: {detail}")
             out.append("")
 
-    section("Comments to delete or fix", gating, required=True)
-    section("Documentation migration candidates (keep the code lean, move the knowledge)", docs, required=False)
-    section("Wording (Simplified Technical English)", wording, required=False)
-    section("Other hints", hints, required=False)
+    section("Comments to delete or fix", gating)
+    section("Documentation migration candidates (keep the code lean, move the knowledge)", docs)
+    section("Wording (Simplified Technical English)", wording)
+    section("Other hints", hints)
 
     counts = Counter(f.severity for f in findings)
     out.append(

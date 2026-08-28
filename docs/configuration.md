@@ -84,7 +84,9 @@ real trees full of build output and codegen.
 `"UC011"` just that one. The `--disable` CLI flag appends to the config's
 list. The `severity` table promotes or demotes individual rules to
 `info`/`warn`/`error`; combined with `--fail-on` this decides what gates
-(see [exit codes](integrations.md#exit-codes)).
+(see [exit codes](integrations.md#exit-codes)). The agent format's
+**MUST FIX**/*consider* marks follow the effective severity, promotions and
+demotions included — the label an agent acts on always matches what gates.
 
 ## directive-patterns
 

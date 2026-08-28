@@ -51,7 +51,7 @@ def test_elaboration_spree_fires_uc101(tmp_path):
     assert stats["new_comment_lines"] == 8
     uc101 = [f for f in findings if f.rule == "UC101"]
     assert uc101, [f.rule for f in findings]
-    assert "8 new prose comment lines in a file that had 2" in uc101[0].message
+    assert "grew from 2 to 8 lines" in uc101[0].message
     # volume alone must not also count as flood noise
     assert not any(f.rule == "UC100" for f in findings)
 
