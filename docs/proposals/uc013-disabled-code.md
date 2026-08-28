@@ -1,8 +1,15 @@
-# UC013 `disabled-code` — proposal
+---
+title: UC013 disabled-code — constant-false regions are commented-out code
+status: draft
+created: 2026-08-28
+target: 0.16.0
+depends: []
+tracking: []
+---
 
-Status: draft, 2026-08-28. Target: 0.15.0.
+# UC013 `disabled-code`
 
-## Motivation
+## Why
 
 UC005 catches disabled code only when it hides behind comment markers,
 because rules judge extracted `Comment` objects and nothing else. Every
@@ -20,7 +27,9 @@ tree-sitter parses the disabled body as ordinary code. Two consequences:
 fingerprint, so a comment-fixer that edits them is flagged as a code change.
 That behavior must not change.
 
-## Survey: unconditional disable constructs per supported language
+## How
+
+### Survey: unconditional disable constructs per supported language
 
 Verified against the tree-sitter grammars in `tree-sitter-language-pack`
 (probe scripts, 2026-08-28). "In scope" means the construct is provably
@@ -54,7 +63,7 @@ Runtime `if (true) { } else { dead }` is out for v1 everywhere: the toggle
 idiom in practice is the preprocessor form; the runtime form is rare and the
 else-branch analysis doubles the surface for little recall.
 
-## Rule definition
+### Rule definition
 
 ```
 UC013  disabled-code  WARN
@@ -71,7 +80,7 @@ syntax.`
 
 Severity WARN, matching UC005 — same disease, different marker.
 
-### Firing conditions
+#### Firing conditions
 
 - The region's disabled body has **≥ 1 non-blank line** (an empty
   `if (false) {}` scaffold is skipped — nothing is being preserved).
@@ -85,7 +94,7 @@ Severity WARN, matching UC005 — same disease, different marker.
 - Nested regions collapse to the **outermost**: one finding per maximal dead
   region (`#if 0` containing another `#if` yields one finding).
 
-### Finding anchor
+#### Finding anchor
 
 `line` = first line of the construct (`#if 0` line, `if (false)` line,
 `#[cfg(any())]` line, `#else` line for a dead else-branch);
@@ -95,16 +104,16 @@ attributed item). The full span makes suppression ergonomic: a standalone
 anchor, and the existing overlap check in `_suppressed` does the rest —
 no suppression changes needed.
 
-### `#elif` correctness detail (C/C++)
+#### `#elif` correctness detail (C/C++)
 
 The dead region of `#if 0` ends at the first `preproc_elif` /
 `preproc_else` child — those alternatives may be live. Symmetrically, only
 the `preproc_else` of a constant-**true** `#if` is dead; `#elif` chains are
 not analyzed further in v1.
 
-## Architecture
+### Architecture
 
-### Extraction (`extract.py`, `model.py`)
+#### Extraction (`extract.py`, `model.py`)
 
 Rules receive a `SourceFile`, not a tree, so extraction must surface the
 regions. New dataclass in `model.py`:
@@ -154,7 +163,7 @@ Comments inside a disabled region stay in the comment stream and are judged
 normally. A `#if 0` block containing a narration comment yields UC013 plus
 UC002 — both true, and the fix (delete the block) resolves both.
 
-### Rule (`rules/core.py`)
+#### Rule (`rules/core.py`)
 
 Trivial once extraction does the work:
 
@@ -169,7 +178,7 @@ def disabled_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 No new config keys: `disable`/severity overrides and both `unwaffle-ignore`
 marker forms apply through the existing machinery.
 
-## Gate integration (`gate.py`)
+### Gate integration (`gate.py`)
 
 UC013 findings are region-anchored, but `_finalize` filters findings by
 overlap with **unmatched comment** spans — without changes, gate mode would
@@ -192,7 +201,14 @@ drop every UC013 finding. Changes:
 fingerprint, so a fixer that rewrites `#if 0` content still fails the
 comments-only proof.
 
-## Corpus plan
+## Expectations
+
+Once shipped: `#if 0`/`cfg(any())`/`if (false)` regions warn like the
+commented-out code they are, in scan and gate alike; a new disabled block no
+longer inflates `added_code_lines` (UC100 denominator); `verify` still
+treats disabled regions as code.
+
+### Corpus plan
 
 Corpus contract as usual: exact `(rule, line)` sets in `.expected.json`,
 clean files stay at zero findings. **Append** all snippets at end-of-file so
@@ -200,7 +216,7 @@ existing expected line numbers stay valid; each addition contributes one
 `["UC013", <line>]` entry (line numbers fixed at implementation time).
 `test_every_rule_is_exercised` then covers UC013 automatically.
 
-### agent_noise additions (one UC013 each unless noted)
+#### agent_noise additions (one UC013 each unless noted)
 
 `c/agent_noise.c` — two findings, anchor at `#if 0` and at `#else`:
 
@@ -326,7 +342,7 @@ fun probeDisabled(v: Int): Int {
 }
 ```
 
-### clean-file guards (must stay at zero findings)
+#### clean-file guards (must stay at zero findings)
 
 - `c/clean.c`: `#ifdef _WIN32` platform guard; `#define ONCE(x) do { x; }
   while (0)`; `#if 1 … #endif` with **no** `#else`.
@@ -340,7 +356,7 @@ fun probeDisabled(v: Int): Int {
   condition, naturally clean — present as a regression tripwire).
 - `js/clean.js`: `if (process.env.DEBUG)` conditioned block.
 
-### gate tests (`tests/test_gate.py`)
+#### gate tests (`tests/test_gate.py`)
 
 - Baseline contains an `#if 0` block, edit leaves it alone → no UC013.
 - Edit introduces an `#if 0` block → UC013 present in gate findings.
@@ -348,7 +364,7 @@ fun probeDisabled(v: Int): Int {
   grow by N (metric-correction proof).
 - `unwaffle-ignore[UC013]` on the line above the region suppresses it.
 
-## Out of scope, explicitly
+### Out of scope
 
 `#ifdef NEVER` and every identifier-conditioned form (C `defined(X)`, C#
 symbols, Swift `#if DEBUG`, Rust `#[cfg(FALSE)]`); expression-level disables
@@ -358,7 +374,7 @@ after `return`/`throw`. Each is either build-dependent, an established
 idiom, or another tool's job. Revisit `#[cfg(FALSE)]` (exact-name form) if
 field reports show it in agent output.
 
-## Checklist
+### Checklist
 
 - [ ] `model.py`: `DisabledRegion`, `SourceFile.disabled_regions`,
       `SourceFile.disabled_line_count`
