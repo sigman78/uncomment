@@ -262,8 +262,9 @@ _STRONG_CODEISH_RES = [
     re.compile(r"^\s*[\w.\[\]:>*&-]+\(.*\)\s*;?\s*$"),
     # a whole-statement assignment-to-call ("x = compute()"); anchoring spares
     # math/wire glosses like "qp = round(1.5*512) = 768, little-endian" and
-    # "source=HOST(1), size=0"
-    re.compile(r"^\s*[\w.\[\]]+\s*:?=\s*[\w.\[\]]+\(.*\)\s*;?\s*$"),
+    # "source=HOST(1), size=0". The lookahead keeps a later ")" from letting
+    # the call span a key=value comma list ("...(3), rate=48000, mode=1 (slave)")
+    re.compile(r"^\s*(?!.*,\s*\w+=)[\w.\[\]]+\s*:?=\s*[\w.\[\]]+\(.*\)\s*;?\s*$"),
     # attached arrows are member access (p->next); a SPACED arrow is mapping
     # prose ("HID events -> ui_key_t") and must not read as code on its own
     re.compile(r"\w->\w|\)\s*{"),
@@ -289,6 +290,21 @@ _WEAK_CODEISH_RES = [
 # gloss with no statement innards is wire-layout prose, not a block
 _BRACE_GLOSS_RE = re.compile(r"\{[^;{}=]*\}")
 
+# "state=TIMEOUT(3)" — an ALL-CAPS callee with a bare ordinal is a wire-enum
+# annotation ("NAME(ordinal)"), not a call statement
+_ENUM_GLOSS_RE = re.compile(r"^\s*[\w.\[\]]+\s*=\s*[A-Z][A-Z0-9_]*\(\d+\)\s*$")
+
+_PLAIN_WORD_RE = re.compile(r"\b[a-z]{2,}\b")
+
+
+def _prose_tail_assign(line: str) -> bool:
+    """'LRCLK = BCK+1 in both).' — an assignment that trails off into prose
+    and ends with a period is a gloss inside a sentence, not code."""
+    stripped = line.rstrip()
+    if not stripped.endswith(".") or stripped.endswith("..") or "=" not in stripped:
+        return False
+    return len(_PLAIN_WORD_RE.findall(stripped.split("=", 1)[1])) >= 2
+
 _CODEISH_RES = _STRONG_CODEISH_RES + _WEAK_CODEISH_RES
 
 
@@ -300,7 +316,12 @@ _PROSE_ASSIGN_RE = re.compile(r"^\s*\w+\s*=\s*[A-Za-z]+(\s+[A-Za-z]+){2,}\s*[.;]
 def _looks_like_code(line: str, strong_only: bool = False) -> bool:
     if not line.strip():
         return False
-    if _PROSE_ASSIGN_RE.match(line) or _BRACE_GLOSS_RE.fullmatch(line.strip()):
+    if (
+        _PROSE_ASSIGN_RE.match(line)
+        or _BRACE_GLOSS_RE.fullmatch(line.strip())
+        or _ENUM_GLOSS_RE.match(line)
+        or _prose_tail_assign(line)
+    ):
         return False
     patterns = _STRONG_CODEISH_RES if strong_only else _CODEISH_RES
     return any(rx.search(line) for rx in patterns)
@@ -319,7 +340,14 @@ def commented_out_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         lines = [ln for ln in c.content.splitlines() if ln.strip()]
         if not lines:
             continue
-        codeish = sum(1 for ln in lines if _looks_like_code(ln))
+        # sentence-wrapped prose: when the previous line ends mid-sentence,
+        # this line's code-ish shape is an accident of wrapping (real dead
+        # code ends its lines at statement boundaries)
+        codeish = sum(
+            1 for i, ln in enumerate(lines)
+            if _looks_like_code(ln)
+            and not (i > 0 and not lines[i - 1].rstrip().endswith((".", ";", ":", "!", "?", "{", "}", ")")))
+        )
         # a one-line formula that mirrors the adjacent code ("// x = r * cos(t)"
         # above "return r * cos(t);") is a restatement — UC001's finding, not
         # dead code

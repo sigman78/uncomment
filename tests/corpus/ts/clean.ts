@@ -37,3 +37,9 @@ export const LR_ORDER = 4;
 
 // Fixed input x output grid; iterate the live side.
 export const GRID = [8, 8];
+
+// state=TIMEOUT(3)
+export const TIMEOUT_FIXTURE = new Uint8Array([2, 3]);
+
+// state=LOCKED(3), rate=48000 LE, clockMode=1 (slave)
+export const LOCKED_FIXTURE = new Uint8Array([2, 1]);

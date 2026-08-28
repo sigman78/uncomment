@@ -89,3 +89,36 @@ def test_unsupported_language_walk_note(tmp_path, capsys):
     assert code == 0
     assert ".svelte x6" in captured.err
     assert json.loads(captured.out)["stats"]["files_unsupported"] == 6
+
+
+# Round 2 residuals: the cleared/remaining contrast pairs, all now prose
+
+def test_wire_enum_gloss_variants_are_prose():
+    for text in (
+        "state=TIMEOUT(3)",
+        "state=LOCKED(3), rate=48000 LE, clockMode=1 (slave)",
+        "state=DONE(2), protocol=NEC(1), code=0x12345678 LE",
+    ):
+        assert "UC005" not in _fired(f"// {text}\nexport const x = 1;\n"), text
+
+
+def test_sentence_wrapped_gloss_block_is_prose():
+    src = ('// I2S slave-clock pins (fw V21+; decoded from clockPinModeP1, "0 = absent"\n'
+           "// wire convention). 0 = unified (legacy: master+slave share one BCK/LRCLK\n"
+           "// pair), 1 = split (master drives bckPin, slave listens on bckPinSlave;\n"
+           "// LRCLK = BCK+1 in both).\n"
+           "export const clockPinMode = 0;\n")
+    assert "UC005" not in _fired(src)
+
+
+def test_nested_call_assignment_still_fires():
+    src = "export function f() {\n  // x = wrap(inner(x))\n  return 1;\n}\n"
+    assert "UC005" in _fired(src)
+
+
+def test_statement_boundary_wrapped_dead_code_still_fires():
+    src = ("export function f() {\n"
+           "  // const a = load(path);\n"
+           "  // return a.merge(env);\n"
+           "  return 1;\n}\n")
+    assert "UC005" in _fired(src)
