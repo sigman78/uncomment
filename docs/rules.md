@@ -20,6 +20,7 @@ and `error` gate (see [`--fail-on`](integrations.md#exit-codes) and the
 | UC012 | warn | emoji/decorative symbols in comments; with `ascii-comments = true`, any non-ASCII character |
 | UC100 | error | (gate only) comment flood: edit adds far more *noisy* comment lines than code |
 | UC101 | warn | (gate only) comment amplification: edit multiplies a file's prose comments |
+| UC102 | info | (gate only) self-granted exception: edit adds a file-wide `uncomment-ignore-file` marker |
 | STE01 | info | sentence over 20 words (ASD-STE100 style) |
 | STE02 | info | passive voice |
 | STE03 | info | non-simple wording ("utilize" → use, "in order to" → to, …) |
@@ -112,11 +113,27 @@ judged and never counted by the gate — marker lines do not count toward the
 flood or amplification math, so adding one cannot create the very finding it
 addresses.
 
-The file-level gate signals (`UC100` flood, `UC101` amplification) have no
-single span to anchor a marker to, so for them the contract is file-wide: an
-explicit `uncomment-ignore[UC100]` or `uncomment-ignore[UC101]` anywhere in
-the file clears that file's signal. The rule id is required — a bare marker
-never reaches file level.
+**File-wide exceptions.** Some legitimate house patterns are rule-shaped for
+a whole file — a parser transcribing a published spec's numbered steps reads
+exactly like narration, and sprinkling thirty span markers through it would
+be its own noise. For that there is the file form:
+
+```java
+// uncomment-ignore-file[UC002]: implements the WHATWG tree-builder algorithm
+```
+
+It suppresses the listed rules for this file only; the rule list is
+mandatory (no marker form turns everything off file-wide), the reason lives
+next to the code it excuses, and `grep uncomment-ignore-file` enumerates
+every exception a repo has granted itself. The escape hatch stays honest in
+gate mode: an edit that *adds* a file-wide marker gets an info-tier `UC102`
+notice ("edit grants this file a file-wide exception"), so a self-granted
+exception is announced to the reviewer rather than slipping through.
+
+The file-level gate signals (`UC100` flood, `UC101` amplification) also
+honor rule-listed span markers wherever they sit — they have no single span
+to anchor to, so an explicit `uncomment-ignore[UC100]` anywhere in the file
+clears that file's signal. A bare marker never reaches file level.
 
 When the disagreement is about a word rather than a site — a product name or
 a domain term the wording rules keep flagging — declare it once in

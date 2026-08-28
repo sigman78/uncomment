@@ -33,7 +33,15 @@ from .config import Config
 from .extract import extract_file, extract_source
 from .languages import EXTENSIONS, spec_for_path
 from .model import Comment, Finding, Kind, Severity, SourceFile, ToolError
-from .rules import file_suppressed_rules, is_license_header, marker_line_count, run_rules, visible_comments
+from .rules import (
+    _IGNORE_FILE_RE,
+    file_suppressed_rules,
+    file_wide_rules,
+    is_license_header,
+    marker_line_count,
+    run_rules,
+    visible_comments,
+)
 
 _WS_RE = re.compile(r"\s+")
 
@@ -94,6 +102,7 @@ class _FileState:
     had_counterpart: bool
     old_prose_lines: int = 0
     new_prose_lines: int = 0  # ALL visible prose lines in the new file
+    old_file_wide: frozenset = frozenset()  # baseline's file-wide marker grants
 
 
 _repo_top_cache: dict[Path, Path | None] = {}
@@ -406,6 +415,33 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
                 excerpt="",
             )
         )
+    # a NEW file-wide exception is itself worth a look: the escape hatch
+    # stays open, but an edit granting one announces it to the reviewer
+    if "UC102" not in file_sups:
+        for rid in sorted(file_wide_rules(st.sf) - st.old_file_wide):
+            marker = next(
+                (c for c in st.sf.comments
+                 if any(rid in m.group("rules") for m in _IGNORE_FILE_RE.finditer(c.content))),
+                None,
+            )
+            if marker is None:
+                continue
+            findings.append(
+                Finding(
+                    rule="UC102",
+                    severity=Severity.INFO,
+                    path=str(st.path),
+                    line=marker.start_line,
+                    end_line=marker.end_line,
+                    message=f"edit grants this file a file-wide exception for {rid}",
+                    action=(
+                        "Confirm the marker's reason justifies a whole-file exception; "
+                        "prefer span markers when only specific comments need it."
+                    ),
+                    excerpt=marker.content.splitlines()[0] if marker.content else "",
+                )
+            )
+
     findings.sort(key=lambda f: (f.line, f.rule))
     return findings
 
@@ -427,6 +463,7 @@ def _gate(files: list[Path], provider, cfg: Config, root_of) -> GateResult:
             old_norms: Counter = Counter()
             old_code_lines = 0
             old_prose_lines = 0
+            old_file_wide: frozenset = frozenset()
             if old_source is not None:
                 spec = spec_for_path(str(f))
                 old_sf = extract_source(str(f), old_source, spec)
@@ -434,6 +471,7 @@ def _gate(files: list[Path], provider, cfg: Config, root_of) -> GateResult:
                 old_norms = Counter(_norm(c) for c in old_visible)
                 old_code_lines = old_sf.code_line_count
                 old_prose_lines = _prose_lines(old_visible)
+                old_file_wide = file_wide_rules(old_sf)
             visible_new = visible_comments(sf, cfg)
             unmatched = _consume_exact(visible_new, old_norms)
             cross_pool += old_norms  # leftovers feed cross-file matching
@@ -446,6 +484,7 @@ def _gate(files: list[Path], provider, cfg: Config, root_of) -> GateResult:
                     had_counterpart=old_source is not None,
                     old_prose_lines=old_prose_lines,
                     new_prose_lines=_prose_lines(visible_new),
+                    old_file_wide=old_file_wide,
                 )
             )
 
