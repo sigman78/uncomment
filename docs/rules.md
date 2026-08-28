@@ -9,7 +9,7 @@ and `error` gate (see [`--fail-on`](integrations.md#exit-codes) and the
 | UC001 | warn | comment restates the adjacent code (word-overlap vs. identifiers) |
 | UC002 | warn | process narration: "now we…", "first,…", "step 1", numbered steps |
 | UC003 | error/warn | edit narration, in two evidence tiers: explicit edit context ("as requested", "the previous version") is an error; a past-tense opener alone ("Simplified X", "Now uses Y") is a warning |
-| UC004 | warn | banner / divider comments (`// ======…`) |
+| UC004 | warn | banner / divider comments (`// ======…`, `── Section ──`), ASCII and Unicode box-drawing alike |
 | UC005 | warn | commented-out code |
 | UC006 | warn | function body saturated with comments (default: >40% and ≥4 lines) |
 | UC007 | warn | doc comment that restates the symbol name ("Gets the name." on `get_name`) |
@@ -100,7 +100,15 @@ int x = parse();  // retried upstream, so failure here is fine uncomment-ignore[
 `uncomment-ignore[RULE,RULE]: reason` inside a comment suppresses those rules
 for it; a standalone marker comment covers the comment or line directly below.
 Without a rule list it suppresses everything in its target. Markers are never
-judged and never counted by the gate.
+judged and never counted by the gate — marker lines do not count toward the
+flood or amplification math, so adding one cannot create the very finding it
+addresses.
+
+The file-level gate signals (`UC100` flood, `UC101` amplification) have no
+single span to anchor a marker to, so for them the contract is file-wide: an
+explicit `uncomment-ignore[UC100]` or `uncomment-ignore[UC101]` anywhere in
+the file clears that file's signal. The rule id is required — a bare marker
+never reaches file level.
 
 When the disagreement is about a word rather than a site — a product name or
 a domain term the wording rules keep flagging — declare it once in

@@ -53,3 +53,6 @@ int cache_size = 128; // the size of the cache used for storing results between 
 
 // utilize the temporary buffer in order to facilitate faster reads from disk
 static char scratch[256];
+
+/* ── Section ────── */
+static int divider_probe = 0;

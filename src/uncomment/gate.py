@@ -33,7 +33,7 @@ from .config import Config
 from .extract import extract_file, extract_source
 from .languages import EXTENSIONS, spec_for_path
 from .model import Comment, Finding, Kind, Severity, SourceFile, ToolError
-from .rules import is_license_header, run_rules, visible_comments
+from .rules import file_suppressed_rules, is_license_header, marker_line_count, run_rules, visible_comments
 
 _WS_RE = re.compile(r"\s+")
 
@@ -319,7 +319,7 @@ def _prose_comments(comments: list[Comment]) -> list[Comment]:
 
 
 def _prose_lines(comments: list[Comment]) -> int:
-    return sum(c.line_count for c in _prose_comments(comments))
+    return sum(c.line_count - marker_line_count(c) for c in _prose_comments(comments))
 
 
 def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
@@ -337,10 +337,15 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
     # rewrite (old comments replaced by reworded ones) is not amplification —
     # only a file whose prose actually multiplied is. Elaboration sprees are
     # still caught even when every comment evades the per-comment rules.
+    # the file-level gate signals honor an explicit uncomment-ignore[RULE]
+    # anywhere in the file — span-scoped markers cannot reach them
+    file_sups = file_suppressed_rules(st.sf)
+
     net_growth = st.new_prose_lines - st.old_prose_lines
     prose_comments = _prose_comments(st.unmatched)
     if (
-        st.had_counterpart
+        "UC101" not in file_sups
+        and st.had_counterpart
         and st.old_prose_lines > 0
         and prose_comments
         and net_growth >= cfg.growth_min_lines
@@ -377,7 +382,11 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
         )
 
     noisy_lines = sum(c.line_count for c in st.unmatched if is_noisy(c))
-    if noisy_lines >= cfg.flood_min_lines and noisy_lines > cfg.flood_ratio * max(st.added_code_lines, 1):
+    if (
+        "UC100" not in file_sups
+        and noisy_lines >= cfg.flood_min_lines
+        and noisy_lines > cfg.flood_ratio * max(st.added_code_lines, 1)
+    ):
         noisy = [c for c in st.unmatched if is_noisy(c)]
         findings.append(
             Finding(

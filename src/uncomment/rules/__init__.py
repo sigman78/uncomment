@@ -128,6 +128,26 @@ def _is_marker(c: Comment) -> bool:
     return c.content.strip().startswith("uncomment-ignore")
 
 
+def file_suppressed_rules(sf: SourceFile) -> frozenset[str]:
+    """Rule ids explicitly named by any uncomment-ignore marker in the file.
+    File-level gate signals (UC100/UC101) honor these wherever the marker
+    sits — a span-scoped marker cannot reach them, so an explicit rule list
+    anywhere in the file is the suppression contract for them."""
+    rules: set[str] = set()
+    for c in sf.comments:
+        m = _IGNORE_RE.search(c.content)
+        if m and m.group("rules"):
+            rules.update(r.strip() for r in m.group("rules").split(",") if r.strip())
+    return frozenset(rules)
+
+
+def marker_line_count(c: Comment) -> int:
+    """Comment lines that are purely a suppression marker: never counted by
+    the gate's prose math, so adding a marker cannot create or worsen the
+    very finding it addresses."""
+    return sum(1 for ln in c.content.splitlines() if ln.strip().startswith("uncomment-ignore"))
+
+
 def visible_comments(sf: SourceFile, cfg: Config) -> list:
     """Comments that rules may judge: tooling directives and standalone
     suppression markers are exempt, plus anything matching the user's extra

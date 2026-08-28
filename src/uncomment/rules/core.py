@@ -168,18 +168,35 @@ def change_narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             )
 
 
-_BANNER_CHARS_RE = re.compile(r"[-=*~_#/]{8,}")
+# divider decoration: ASCII rules plus the Unicode box-drawing block
+# (─ ━ ═ ╌ …) and heavy bars, which house styles use the same way
+_DECO_CHAR_RE = re.compile(r"[-=*~_#/▬─-╿]")
 _BOX_BORDER_RE = re.compile(r"^[+|][-+=| ]{6,}[+|]$")
+_UNICODE_BOX_RE = re.compile(r"^[┌└├╔╚╠].*[┐┘┤╗╝╣]$|[│║].*[│║]")
 
 
 def _is_diagram(content: str) -> bool:
     """ASCII tables and box diagrams share characters with banners but carry
-    real information — keep them."""
+    real information — keep them, in both ASCII and box-drawing form."""
     for line in content.splitlines():
         stripped = line.strip()
-        if _BOX_BORDER_RE.match(stripped) or stripped.count("|") >= 2:
+        if _BOX_BORDER_RE.match(stripped) or _UNICODE_BOX_RE.search(stripped) or stripped.count("|") >= 2:
             return True
     return False
+
+
+def _banner_line(line: str) -> bool:
+    """Mostly decoration around a short label: '==== init ====',
+    '── Section ──────'. The density guard keeps slash-heavy prose (URLs,
+    path lists) from reading as decoration."""
+    solid = re.sub(r"\s+", "", line)
+    if not solid:
+        return False
+    deco = len(_DECO_CHAR_RE.findall(solid))
+    if deco < 8 or deco / len(solid) < 0.5:
+        return False
+    label_words = [w for w in line.split() if not all(_DECO_CHAR_RE.match(ch) for ch in w)]
+    return len(label_words) <= 3
 
 
 @rule(
@@ -193,7 +210,7 @@ def banner(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         if is_license_header(c) or _is_diagram(c.content):
             continue
         for line in c.content.splitlines():
-            if _BANNER_CHARS_RE.search(line) and len(line.split()) <= 5:
+            if _banner_line(line):
                 yield _finding(
                     "UC004",
                     Severity.WARN,
@@ -445,9 +462,12 @@ def trailing_length(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
     for c in sf.comments:
         if c.attachment is not Attachment.TRAILING:
             continue
+        # measure collapsed text so column-aligned comment blocks are not
+        # penalized for their alignment padding
+        chars = len(" ".join(c.text.split()))
         over = []
-        if len(c.text) > cfg.max_trailing_chars:
-            over.append(f"{len(c.text)} chars (limit {cfg.max_trailing_chars})")
+        if chars > cfg.max_trailing_chars:
+            over.append(f"{chars} chars (limit {cfg.max_trailing_chars})")
         if c.word_count > cfg.max_trailing_words:
             over.append(f"{c.word_count} words (limit {cfg.max_trailing_words})")
         if over:
