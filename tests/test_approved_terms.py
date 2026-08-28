@@ -23,9 +23,9 @@ def test_wording_text_masks_terms():
 
 
 def test_uc002_opener_term_is_spared():
-    src = "// We Robots ships the SDK for the kiosk.\nexport const sdk = 1;\n"
+    src = "// Then Labs ships the SDK for the kiosk.\nexport const sdk = 1;\n"
     assert "UC002" in _fired(src)
-    assert "UC002" not in _fired(src, Config(approved_terms=["We Robots"]))
+    assert "UC002" not in _fired(src, Config(approved_terms=["Then Labs"]))
 
 
 def test_uc003_opener_term_is_spared():

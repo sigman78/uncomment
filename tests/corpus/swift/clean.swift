@@ -23,3 +23,11 @@ let kBackoffMs = 50 // tuned against the staging registry
 // swiftlint:enable identifier_name
 
 struct TimeoutError: Error {}
+
+/// Errors produced during server trust evaluation.
+enum TrustError2: Error {
+    /// Certificate pinning failed.
+    case certificatePinningFailed
+    /// Public key pinning failed.
+    case publicKeyPinningFailed
+}
