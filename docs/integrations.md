@@ -110,8 +110,8 @@ makes that pattern concrete.
 
 ## Autonomous comment fixing (subagent + verify)
 
-Comment fixes are the most mechanical edits in an agent loop — a small,
-cheap model handles them well (field-proven: a full-tree sweep of 726
+Comment fixes are among the most mechanical edits in an agent loop — a
+mid-tier model handles them reliably (field-proven: a full-tree sweep of 726
 findings ran to zero with no code damage). Two pieces make the loop safe
 and cheap:
 
@@ -133,7 +133,7 @@ findings never will.
 name: comment-fixer
 description: Fixes comment-lint findings from uncomment. Use when the comment gate reports findings.
 tools: Read, Edit, Bash
-model: haiku
+model: sonnet
 ---
 
 You fix comment-lint findings and nothing else.
@@ -175,7 +175,7 @@ verifies, so the main agent never sees the noise at all:
 
 ```sh
 uncomment gate "$f" --baseline git:HEAD --format agent > /tmp/report.md || {
-  claude -p --model claude-haiku-4-5-20251001 --allowedTools "Read,Edit" \
+  claude -p --model sonnet --allowedTools "Read,Edit" \
     "$(cat /tmp/report.md) Fix only these comments in $f; touch nothing else."
   git diff -- "$f" | uncomment verify --diff - || git checkout -- "$f"
   echo "comments auto-fixed in $f - re-read it before further edits" 1>&2
