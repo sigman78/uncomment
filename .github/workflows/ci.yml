@@ -30,3 +30,19 @@ jobs:
       - name: Self-lint
         shell: bash
         run: uv run unwaffle check src/ tests/test_*.py
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      # the same tests/corpus tree drives both implementations
+      - name: Run tests
+        run: cargo test
+        working-directory: rust
