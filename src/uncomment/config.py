@@ -82,6 +82,10 @@ class Config:
     # payload" flagged as narration
     approved_terms: list[str] = field(default_factory=list)
 
+    # extra policy lines appended to the agent-format corrective prompt:
+    # house rules like "Long design prose goes to docs/architecture.md."
+    agent_policy: list[str] = field(default_factory=list)
+
     disable: list[str] = field(default_factory=list)
     severity: dict[str, str] = field(default_factory=dict)
 
@@ -156,6 +160,9 @@ def _from_table(table: dict, source: str) -> Config:
         for pattern in patterns:
             if not pattern.strip().strip("/"):
                 errors.append(f"{key_name}: empty pattern")
+    for line in cfg.agent_policy:
+        if not line.strip():
+            errors.append("agent-policy: empty line")
 
     if errors:
         raise ToolError(f"invalid configuration in {source}: " + "; ".join(errors))

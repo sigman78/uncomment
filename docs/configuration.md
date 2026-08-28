@@ -33,6 +33,9 @@ respect-gitignore = true           # drop files git ignores
 disable = ["STE02", "UC011"]       # rule ids or prefixes ("STE" disables all STE)
 directive-patterns = ["^MY-LINT:"] # extra tooling-directive regexes to exempt
 approved-terms = ["Let's Encrypt", "leverage"]  # vocabulary the wording rules skip
+agent-policy = [                   # house rules appended to the agent-format prompt
+  "Long design prose goes to docs/architecture.md.",
+]
 
 [tool.uncomment.severity]          # promote/demote rules
 STE03 = "warn"
@@ -108,3 +111,14 @@ Approved terms still count for the restatement rules (UC001/UC007) —
 approving a word never excuses a comment that repeats the code. For
 disagreements about a specific site rather than a word, use
 [`uncomment-ignore` markers](rules.md#disagree-with-a-finding) instead.
+
+## agent-policy
+
+Extra policy lines appended to the `--format agent` corrective prompt —
+house rules the fixing agent should follow, like "Long design prose goes to
+docs/architecture.md." or "Comments are English-only." They are numbered
+after the built-in points and carry the same weight. The built-in policy is
+already adaptive: only the points whose rule families actually fired are
+emitted (plus the never-strip-real-docs and delete-only-the-comment
+guardrails, which always hold), so the prompt spends the agent's context on
+instructions it can act on.
