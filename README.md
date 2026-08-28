@@ -47,19 +47,19 @@ unwaffle gate . --baseline git:origin/main --format agent > comment-feedback.md
 
 Also available: `--format json` (stable machine schema), `--format sarif`
 (GitHub code scanning), a stdin diff mode for edit hooks, and a Claude Code
-hook recipe — see [integrations](docs/integrations.md).
+hook recipe — see [integrations](https://github.com/sigman78/unwaffle/blob/main/docs/integrations.md).
 
 ## Documentation
 
-- [Rules](docs/rules.md) — the full rule table, what is deliberately not
+- [Rules](https://github.com/sigman78/unwaffle/blob/main/docs/rules.md) — the full rule table, what is deliberately not
   flagged, tooling-directive exemptions, and in-place suppressions.
-- [Gate mode](docs/gate.md) — baselines, staged matching, the flood and
+- [Gate mode](https://github.com/sigman78/unwaffle/blob/main/docs/gate.md) — baselines, staged matching, the flood and
   amplification signals, diff input, performance.
-- [Configuration](docs/configuration.md) — every setting, `disable`/
+- [Configuration](https://github.com/sigman78/unwaffle/blob/main/docs/configuration.md) — every setting, `disable`/
   `severity`, `directive-patterns`, `approved-terms`.
-- [Output formats and integrations](docs/integrations.md) — exit codes, the
+- [Output formats and integrations](https://github.com/sigman78/unwaffle/blob/main/docs/integrations.md) — exit codes, the
   four formats, CI recipes, the Claude Code hook.
-- [Development](docs/development.md) — the corpus contract, self-linting,
+- [Development](https://github.com/sigman78/unwaffle/blob/main/docs/development.md) — the corpus contract, self-linting,
   architecture notes, the planned Rust port.
 
 ## Development
@@ -71,6 +71,6 @@ uv run unwaffle check src/ tests/test_*.py   # dogfood: CI enforces this
 
 The test base is corpus-driven: noisy files carry sidecars with the exact
 expected findings, clean files must stay at zero, and the tool lints its own
-source in CI. Details in [development](docs/development.md).
+source in CI. Details in [development](https://github.com/sigman78/unwaffle/blob/main/docs/development.md).
 
 MIT licensed.

@@ -9,10 +9,23 @@ authors = [
     { name = "SiGMan", email = "sigman@ioupg.com" }
 ]
 requires-python = ">=3.13"
+keywords = ["linter", "comments", "code-quality", "coding-agents", "tree-sitter"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
     "tree-sitter>=0.26.0",
     "tree-sitter-language-pack>=1.15.8",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sigman78/unwaffle"
+Documentation = "https://github.com/sigman78/unwaffle/tree/main/docs"
+Issues = "https://github.com/sigman78/unwaffle/issues"
 
 [project.scripts]
 unwaffle = "unwaffle.cli:main"
