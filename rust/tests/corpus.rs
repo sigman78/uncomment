@@ -66,6 +66,18 @@ fn python_clean_extracts() {
 }
 
 #[test]
+fn python_docstrings_are_doc_comments() {
+    let src = "\"\"\"module doc\"\"\"\n\n\ndef f():\n    '''fn doc'''\n    return 1\n";
+    let (spec, _) = unwaffle::languages::spec_for_path("t.py").unwrap();
+    let sf = unwaffle::extract::extract_source("t.py", src, spec);
+    assert_eq!(sf.comments.len(), 2);
+    assert!(sf.comments.iter().all(|c| c.kind == Kind::Doc));
+    assert_eq!(sf.comments[0].content, "module doc");
+    assert_eq!(sf.comments[1].content, "fn doc");
+    assert_eq!(sf.comments[1].attached_code, "def f():");
+}
+
+#[test]
 fn line_comment_runs_merge() {
     let src = "// first line\n// second line\nint x = 1;\n// standalone\n";
     let (spec, _) = unwaffle::languages::spec_for_path("t.c").unwrap();

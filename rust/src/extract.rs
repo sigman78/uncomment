@@ -1,15 +1,31 @@
-//! Tree-sitter comment extraction — first slice of the port.
+//! Tree-sitter comment extraction, ported from src/unwaffle/extract.py.
 //!
-//! Parity with src/unwaffle/extract.py so far: raw comment collection,
-//! adjacent line-comment merging (same column, consecutive rows, no code
-//! before), comment-byte masking for code_lines/code_line_count, and
-//! attachment classification. Not yet ported: docstrings, directive
-//! classification, function context, doc-by-convention, the
-//! directive-line merge splits.
+//! Parity so far: raw collection, line-run merging (doc-class and marker
+//! splits included), comment-byte masking, the full attachment cascade,
+//! kind classification, Go doc-by-convention, Python docstrings. Not yet
+//! ported: directive classification (is_directive stays false and
+//! directive-line merge splits are inert), function context.
+
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use regex::Regex;
+use tree_sitter::{Node, Parser};
 
 use crate::languages::{is_comment_node, spec_for_path, LangSpec};
 use crate::model::{Attachment, Comment, Kind, SourceFile};
-use tree_sitter::{Node, Parser};
+
+/// A header comment directly above one of these lines documents the file,
+/// not the line.
+fn import_line_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r#"^\s*(#\s*(include|pragma|ifndef|define)\b|import\b|from\b|package\b|using\b|use\b|namespace\b|extern crate\b|mod\b|module\b|['"]use strict)"#,
+        )
+        .unwrap()
+    })
+}
 
 struct RawComment {
     text: String,
@@ -17,6 +33,8 @@ struct RawComment {
     start_col: usize,
     end_row: usize,
     end_col: usize,
+    /// (container node type, container start row) for Python docstrings.
+    docstring: Option<(&'static str, usize)>,
 }
 
 /// Split on \n only: tree-sitter rows do the same, while a \f or U+2028
@@ -25,12 +43,23 @@ fn byte_lines(data: &[u8]) -> Vec<&[u8]> {
     data.split(|&b| b == b'\n').collect()
 }
 
+fn trim_blank_edges(mut out: Vec<String>) -> String {
+    while out.first().is_some_and(|l| l.is_empty()) {
+        out.remove(0);
+    }
+    while out.last().is_some_and(|l| l.is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
 pub fn strip_markers(raw: &str, line_marker: &str) -> String {
     let mut out: Vec<String> = Vec::new();
     for line in raw.split('\n') {
         let mut s = line.trim();
         if line_marker == "#" {
-            // one marker only: '#### section' keeps its banner characters
+            // one marker only: '#### section' keeps its banner characters and
+            // '#!' keeps the '!' so the shebang stays recognizable
             s = s.strip_prefix('#').unwrap_or(s);
         } else {
             let mut stripped = false;
@@ -48,20 +77,69 @@ pub fn strip_markers(raw: &str, line_marker: &str) -> String {
         }
         out.push(s.trim().to_string());
     }
-    while out.first().is_some_and(|l| l.is_empty()) {
-        out.remove(0);
-    }
-    while out.last().is_some_and(|l| l.is_empty()) {
-        out.pop();
-    }
-    out.join("\n")
+    trim_blank_edges(out)
 }
 
-fn collect_comments(root: Node, data: &[u8]) -> Vec<RawComment> {
-    let mut out = Vec::new();
+/// Docstring content: quote characters and prefix letters removed.
+pub fn strip_docstring_quotes(raw: &str) -> String {
+    let prefix_len = raw
+        .bytes()
+        .take(3)
+        .take_while(|b| matches!(b, b'r' | b'R' | b'u' | b'U' | b'b' | b'B' | b'f' | b'F'))
+        .count();
+    let rest = &raw[prefix_len..];
+    let quote = ["\"\"\"", "'''", "\"", "'"].iter().find(|q| rest.starts_with(**q));
+    let body = match quote {
+        Some(q) => {
+            let inner = &rest[q.len()..];
+            inner.strip_suffix(*q).unwrap_or(inner)
+        }
+        None => raw,
+    };
+    trim_blank_edges(body.split('\n').map(|l| l.trim().to_string()).collect())
+}
+
+fn doc_class(text: &str, spec: &LangSpec) -> &'static str {
+    for prefix in spec.doc_line_prefixes {
+        if text.starts_with(prefix) {
+            return prefix;
+        }
+    }
+    ""
+}
+
+fn marker_line(text: &str, spec: &LangSpec) -> bool {
+    let first = text.split('\n').next().unwrap_or("");
+    strip_markers(first, spec.line_marker).starts_with("unwaffle-ignore")
+}
+
+fn classify_kind(text: &str, spec: &LangSpec) -> Kind {
+    if spec.doc_block_prefixes.iter().any(|p| text.starts_with(p)) && !text.starts_with("/**/") {
+        return Kind::Doc; // bare "/**/" separators are not docs
+    }
+    if spec.doc_line_prefixes.iter().any(|p| text.starts_with(p)) {
+        return Kind::Doc;
+    }
+    if text.starts_with("/*") {
+        return Kind::Block;
+    }
+    Kind::Line
+}
+
+struct Walk {
+    raw: Vec<RawComment>,
+    /// First named non-comment node starting at each row (outermost wins).
+    row_first_node: HashMap<usize, String>,
+}
+
+fn walk(root: Node, data: &[u8], spec: &'static LangSpec) -> Walk {
+    let mut w = Walk { raw: Vec::new(), row_first_node: HashMap::new() };
+    // docstring string-node id -> (container type, container row)
+    let mut docstring_nodes: HashMap<usize, (&'static str, usize)> = HashMap::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if is_comment_node(node.kind()) {
+        let comment = is_comment_node(node.kind());
+        if comment || docstring_nodes.contains_key(&node.id()) {
             let text = node
                 .utf8_text(data)
                 .unwrap_or_default()
@@ -73,14 +151,44 @@ fn collect_comments(root: Node, data: &[u8]) -> Vec<RawComment> {
                 end_row -= 1;
                 end_col = usize::MAX;
             }
-            out.push(RawComment {
+            w.raw.push(RawComment {
                 text,
                 start_row: node.start_position().row,
                 start_col: node.start_position().column,
                 end_row,
                 end_col,
+                docstring: docstring_nodes.get(&node.id()).copied(),
             });
             continue;
+        }
+        if node.is_named() && node.kind() != "translation_unit" {
+            w.row_first_node.entry(node.start_position().row).or_insert_with(|| node.kind().to_string());
+        }
+        if let Some(container) = spec.docstring_containers.iter().find(|c| **c == node.kind()) {
+            let body = if node.kind() == "module" { Some(node) } else { node.child_by_field_name("body") };
+            if let Some(body) = body {
+                for i in 0..body.child_count() as u32 {
+                    let child = body.child(i).unwrap();
+                    if is_comment_node(child.kind()) {
+                        continue;
+                    }
+                    // the grammar may or may not wrap the docstring statement
+                    let target = if child.kind() == "string" {
+                        Some(child)
+                    } else if child.kind() == "expression_statement"
+                        && child.named_child_count() == 1
+                        && child.named_child(0).unwrap().kind() == "string"
+                    {
+                        child.named_child(0)
+                    } else {
+                        None
+                    };
+                    if let Some(t) = target {
+                        docstring_nodes.insert(t.id(), (container, node.start_position().row));
+                    }
+                    break; // only the first statement can be a docstring
+                }
+            }
         }
         for i in (0..node.child_count() as u32).rev() {
             if let Some(child) = node.child(i) {
@@ -88,8 +196,8 @@ fn collect_comments(root: Node, data: &[u8]) -> Vec<RawComment> {
             }
         }
     }
-    out.sort_by_key(|c| (c.start_row, c.start_col));
-    out
+    w.raw.sort_by_key(|c| (c.start_row, c.start_col));
+    w
 }
 
 pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> SourceFile {
@@ -102,21 +210,18 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
     let data = source.as_bytes();
     let tree = parser.parse(data, None).expect("tree-sitter returns a tree for any input");
 
-    let raw = collect_comments(tree.root_node(), data);
+    let w = walk(tree.root_node(), data, spec);
+    let raw = &w.raw;
     let blines = byte_lines(data);
     let lines: Vec<String> = blines
         .iter()
-        .map(|bl| {
-            String::from_utf8_lossy(bl)
-                .trim_end_matches('\r')
-                .to_string()
-        })
+        .map(|bl| String::from_utf8_lossy(bl).trim_end_matches('\r').to_string())
         .collect();
 
-    // per-row comment span masks, byte offsets
+    // rows occupied by comments, and per-row comment span masks (byte offsets)
     let mut masks: Vec<Vec<(usize, usize)>> = vec![Vec::new(); blines.len()];
     let mut comment_rows = vec![false; blines.len()];
-    for rc in &raw {
+    for rc in raw {
         for row in rc.start_row..=rc.end_row.min(blines.len().saturating_sub(1)) {
             comment_rows[row] = true;
             let a = if row == rc.start_row { rc.start_col } else { 0 };
@@ -140,23 +245,32 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
     }
     let first_code_row = code_rows.iter().position(|&c| c);
 
-    // merge runs of line comments: consecutive rows, same column, own-line
-    let is_line = |rc: &RawComment| rc.text.starts_with(spec.line_marker);
-    let own_line = |rc: &RawComment| {
-        blines[rc.start_row][..rc.start_col.min(blines[rc.start_row].len())]
-            .iter()
-            .all(|b| b.is_ascii_whitespace())
+    let code_before = |rc: &RawComment| -> String {
+        let bl = blines.get(rc.start_row).copied().unwrap_or(b"");
+        String::from_utf8_lossy(&bl[..rc.start_col.min(bl.len())]).trim().to_string()
     };
+    let code_after = |rc: &RawComment| -> String {
+        let bl = blines.get(rc.end_row).copied().unwrap_or(b"");
+        String::from_utf8_lossy(&bl[rc.end_col.min(bl.len())..]).trim().to_string()
+    };
+
+    // ---- group adjacent line comments into logical comments ----
     let mut groups: Vec<Vec<&RawComment>> = Vec::new();
-    for rc in &raw {
-        let merges = is_line(rc)
-            && own_line(rc)
+    for rc in raw {
+        let is_line = rc.docstring.is_none() && rc.text.starts_with(spec.line_marker);
+        let merges = is_line
+            && code_before(rc).is_empty()
             && groups.last().is_some_and(|g| {
-                let prev = g.last().unwrap();
-                is_line(prev)
-                    && own_line(prev)
+                let prev = g[g.len() - 1];
+                prev.docstring.is_none()
+                    && prev.text.starts_with(spec.line_marker)
+                    && code_before(prev).is_empty()
                     && rc.start_row == prev.end_row + 1
                     && rc.start_col == prev.start_col
+                    && doc_class(&rc.text, spec) == doc_class(&prev.text, spec)
+                    // suppression-marker lines never merge with prose;
+                    // directive-line splits await the directives port
+                    && marker_line(&rc.text, spec) == marker_line(&prev.text, spec)
             });
         if merges {
             groups.last_mut().unwrap().push(rc);
@@ -169,45 +283,79 @@ pub fn extract_source(path: &str, source: &str, spec: &'static LangSpec) -> Sour
     for group in &groups {
         let first = group[0];
         let last = group[group.len() - 1];
-        let text: String = group.iter().map(|rc| rc.text.as_str()).collect::<Vec<_>>().join("\n");
-        let head = first.text.trim_start();
-        let kind = if spec.doc_block_prefixes.iter().any(|p| head.starts_with(p))
-            || spec.doc_line_prefixes.iter().any(|p| head.starts_with(p))
-        {
-            Kind::Doc
-        } else if is_line(first) {
-            Kind::Line
+
+        if let Some((container_type, container_row)) = first.docstring {
+            let (attachment, attached) = if container_type == "module" {
+                (Attachment::FileHeader, String::new())
+            } else {
+                // the docstring documents the def/class line above it
+                let attached = lines.get(container_row).map(|l| l.trim().to_string()).unwrap_or_default();
+                (Attachment::Preceding, attached)
+            };
+            comments.push(Comment {
+                path: path.to_string(),
+                lang: spec.name,
+                kind: Kind::Doc,
+                attachment,
+                content: strip_docstring_quotes(&first.text),
+                text: first.text.clone(),
+                start_line: first.start_row + 1,
+                end_line: last.end_row + 1,
+                col: first.start_col,
+                attached_code: attached,
+                in_function: false,
+                function_name: String::new(),
+                is_directive: false,
+            });
+            continue;
+        }
+
+        let raw_text: String = group.iter().map(|rc| rc.text.as_str()).collect::<Vec<_>>().join("\n");
+        let trailing_code = code_before(first);
+        let after_code = code_after(last);
+        let next_row_code = code_rows.get(last.end_row + 1).copied().unwrap_or(false);
+        let next_line = lines.get(last.end_row + 1).map(|l| l.trim().to_string()).unwrap_or_default();
+        let before_first_code = first_code_row.is_none_or(|fc| first.start_row < fc);
+
+        let (attachment, attached) = if !trailing_code.is_empty() {
+            (Attachment::Trailing, trailing_code)
+        } else if !after_code.is_empty() {
+            (Attachment::Preceding, after_code)
+        } else if raw_text.starts_with("//!") || raw_text.starts_with("/*!") {
+            // inner/module doc: documents the file, not the next item
+            (Attachment::FileHeader, String::new())
+        } else if before_first_code && (!next_row_code || import_line_re().is_match(&next_line)) {
+            (Attachment::FileHeader, String::new())
+        } else if next_row_code {
+            (Attachment::Preceding, next_line)
         } else {
-            Kind::Block
+            (Attachment::Floating, String::new())
         };
 
-        let end_row = last.end_row;
-        let attachment = if !own_line(first) {
-            Attachment::Trailing
-        } else if first_code_row.is_none_or(|fc| first.start_row < fc) {
-            Attachment::FileHeader
-        } else if end_row + 1 < code_rows.len() && code_rows[end_row + 1] {
-            Attachment::Preceding
-        } else {
-            Attachment::Floating
-        };
-        let attached_code = match attachment {
-            Attachment::Trailing => code_lines[first.start_row].trim().to_string(),
-            Attachment::Preceding => code_lines[end_row + 1].trim().to_string(),
-            _ => String::new(),
-        };
+        let mut kind = classify_kind(&raw_text, spec);
+        if kind != Kind::Doc
+            && matches!(attachment, Attachment::Preceding | Attachment::FileHeader)
+            && !spec.doc_by_convention_nodes.is_empty()
+            && w.row_first_node
+                .get(&(last.end_row + 1))
+                .is_some_and(|k| spec.doc_by_convention_nodes.contains(&k.as_str()))
+        {
+            // e.g. Go: a comment directly above a declaration or the package
+            // clause is a doc comment, even without special markers
+            kind = Kind::Doc;
+        }
 
         comments.push(Comment {
             path: path.to_string(),
             lang: spec.name,
             kind,
             attachment,
-            content: strip_markers(&text, spec.line_marker),
-            text,
+            content: strip_markers(&raw_text, spec.line_marker),
+            text: raw_text,
             start_line: first.start_row + 1,
-            end_line: end_row + 1,
+            end_line: last.end_row + 1,
             col: first.start_col,
-            attached_code,
+            attached_code: attached,
             in_function: false,
             function_name: String::new(),
             is_directive: false,
