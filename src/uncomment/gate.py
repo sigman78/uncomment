@@ -597,6 +597,109 @@ def gate_diff(diff_text: str, cfg: Config, restrict: list[Path] | None = None,
     return result
 
 
+def gate_changes(ref: str, cfg: Config, root: Path | None = None) -> GateResult:
+    """The pathless gate: git decides the file list — tracked files changed
+    relative to REF plus untracked (not ignored) ones — and the config's
+    include/exclude decides the scope. One command for hooks and fixer
+    agents, no name-only piping."""
+    from .filtering import is_generated, selected
+
+    cwd = (root or Path.cwd()).resolve()
+    top = _git_repo_top(cwd)
+    if top is None:
+        raise ToolError("gate without paths needs to run inside a git repository")
+
+    rels: list[str] = []
+    for cmd in (
+        ["git", "diff", "--name-only", "-z", ref or "HEAD", "--"],
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    ):
+        try:
+            out = subprocess.run(cmd, cwd=top, capture_output=True, text=True, check=True).stdout
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip().splitlines()
+            raise ToolError(
+                f"git could not list changes vs '{ref or 'HEAD'}'"
+                + (f": {detail[0]}" if detail else "")
+            ) from None
+        rels.extend(r for r in out.split("\0") if r.strip())
+
+    seen: set[str] = set()
+    files: list[Path] = []
+    skipped = 0
+    for rel in rels:
+        if rel in seen:
+            continue
+        seen.add(rel)
+        disk = top / rel
+        if not disk.is_file():
+            continue  # deleted in the working tree
+        if Path(rel).suffix.lower() not in EXTENSIONS or not selected(rel, cfg):
+            skipped += 1
+            continue
+        if cfg.skip_generated and is_generated(disk):
+            skipped += 1
+            continue
+        try:
+            display = disk.resolve().relative_to(Path.cwd())
+        except ValueError:
+            display = disk
+        files.append(display)
+
+    result = _gate(files, _GitBaseline(ref), cfg, lambda f: top)
+    result.files_skipped = skipped
+    return result
+
+
+def _code_fingerprint(path_label: str, text: str, spec) -> list[str]:
+    """Comment-stripped, whitespace-trimmed, non-blank code lines. Two files
+    with equal fingerprints differ only in comments and blank space."""
+    sf = extract_source(path_label, text, spec)
+    return [ln.rstrip() for ln in sf.code_lines if ln.strip()]
+
+
+def verify_comments_only(diff_text: str, root: Path | None = None) -> list[tuple[str, str]]:
+    """Prove a unified diff touches nothing but comments. Returns violations
+    as (path, detail); empty means every change is comment-only. Built for
+    autonomous comment-fixer loops: a fixer that drifted into code is caught
+    here, not in review. Conservative by design — deletions, binary changes,
+    and unsupported languages are violations, never assumptions."""
+    from .diffio import parse_diff, reverse_apply
+
+    root = (root or Path.cwd()).resolve()
+    problems: list[tuple[str, str]] = []
+    for fp in parse_diff(diff_text):
+        if fp.new_path is None:
+            problems.append((fp.old_path or "<unknown>", "file deleted"))
+            continue
+        if fp.binary:
+            problems.append((fp.new_path, "binary change"))
+            continue
+        spec = spec_for_path(fp.new_path)
+        if spec is None:
+            problems.append((fp.new_path, "unsupported language, cannot verify"))
+            continue
+        disk = _locate_diff_file(fp.new_path, root)
+        if disk is None:
+            raise ToolError(
+                f"file from diff not found on disk: {fp.new_path} "
+                "(stale diff, or run from the directory the diff paths are relative to)"
+            )
+        new_text = disk.read_text(encoding="utf-8-sig", errors="replace")
+        old_lines = [] if fp.old_path is None else reverse_apply(fp, _split_lines(new_text), fp.new_path)
+        old_text = "\n".join(old_lines) + ("\n" if old_lines else "")
+        old_code = _code_fingerprint(fp.new_path, old_text, spec)
+        new_code = _code_fingerprint(fp.new_path, new_text, spec)
+        if old_code != new_code:
+            i = next(
+                (k for k, (a, b) in enumerate(zip(old_code, new_code)) if a != b),
+                min(len(old_code), len(new_code)),
+            )
+            near = new_code[i] if i < len(new_code) else old_code[i]
+            problems.append((fp.new_path, f"code changed near: {near.strip()!r}"))
+    return problems
+
+
 def gate_file(new_path: Path, baseline: str, new_root: Path, cfg: Config) -> tuple[list[Finding], SourceFile | None, dict]:
     """Single-file convenience wrapper used by tests and simple hooks."""
     sf = extract_file(new_path)

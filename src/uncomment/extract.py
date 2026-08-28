@@ -203,12 +203,15 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
             masks.setdefault(row, []).append((a, b))
 
     code_rows: set[int] = set()
+    code_lines: list[str] = []
     for row, bline in enumerate(byte_lines):
         buf = bytearray(bline)
         for a, b in masks.get(row, ()):
             for i in range(a, min(b, len(buf))):
                 buf[i] = 0x20
-        if bytes(buf).strip():
+        blanked = bytes(buf)
+        code_lines.append(blanked.rstrip(b"\r").decode("utf-8", "replace"))
+        if blanked.strip():
             code_rows.add(row)
 
     first_code_row = min(code_rows) if code_rows else None
@@ -349,6 +352,7 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
         comments=comments,
         functions=functions,
         code_line_count=len(code_rows),
+        code_lines=code_lines,
         comment_line_count=len(comment_rows),
     )
 

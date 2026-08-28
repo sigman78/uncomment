@@ -48,7 +48,7 @@ open on it; a stricter setup should fail closed.
 ## CI
 
 ```console
-uncomment gate . --baseline git:origin/main --format agent > comment-feedback.md
+uncomment gate --baseline git:origin/main --format agent > comment-feedback.md
 git diff origin/main...HEAD | uncomment gate --diff - --format sarif > uncomment.sarif
 ```
 
@@ -105,7 +105,101 @@ Two practical notes from real deployments: the gate never re-judges
 pre-existing comments, so adopting the tool on a codebase with a large
 comment backlog does not block anyone; and the `--format agent` report is
 self-contained enough to hand to a cheap subagent that performs just the
-comment fixes, keeping the main agent's context clean.
+comment fixes, keeping the main agent's context clean. The next section
+makes that pattern concrete.
+
+## Autonomous comment fixing (subagent + verify)
+
+Comment fixes are among the most mechanical edits in an agent loop — a
+mid-tier model handles them reliably (field-proven: a full-tree sweep of 726
+findings ran to zero with no code damage). Two pieces make the loop safe
+and cheap:
+
+**The verifier.** `uncomment verify` proves working-tree changes touch
+*nothing but comments*: it runs `git diff` itself (against `git:HEAD` by
+default, or `--baseline git:REF` — pass a `git stash create` snapshot to
+scope the proof to a fixer's own edits amid other uncommitted work;
+`--diff FILE|-` verifies an explicit diff instead). Both sides of every
+changed file are comment-stripped and the remaining code must be identical
+(deletions, binary changes, and unsupported languages count as violations —
+conservative by design). Any fixer loop should end with it; if the fixer
+drifted into code, the loop reverts instead of trusting. Two caveats:
+tooling directives are comments to the verifier, so the fixer's
+instructions must forbid touching them — the gate never flags them, so a
+findings-driven fixer never will; and `git diff` does not see untracked
+files, so a fixer must never create files (the subagent's tool list
+enforces Edit-only).
+
+**The fixer subagent** (recipe B — recommended). Save as
+`.claude/agents/comment-fixer.md`:
+
+```markdown
+---
+name: comment-fixer
+description: Fixes comment-lint findings from uncomment. Use when the comment gate reports findings.
+tools: Read, Edit, Bash
+model: sonnet
+---
+
+You fix comment-lint findings and nothing else.
+
+Procedure (uncomment = `uvx --from git+https://github.com/sigman78/uncomment uncomment`):
+1. Snapshot the tree before touching anything, so step 4 can prove YOUR
+   edits are comment-only even amid other uncommitted work:
+   `SNAP=$(git stash create); SNAP=${SNAP:-HEAD}`
+2. Run `uncomment gate --baseline git:HEAD --format agent` (no paths —
+   the tool asks git for the changed files, scoped by uncomment.toml).
+   Apply every MUST FIX item exactly as its action says. Delete only
+   comments; never change code, strings, or tooling directives
+   (eslint/noqa/MARK and similar control comments). Consider items are
+   optional; apply them when the fix is obvious.
+3. Re-run the gate until it exits 0.
+4. Prove you touched only comments: `uncomment verify --baseline git:$SNAP`
+   If verify fails, revert your non-comment change and fix again.
+5. Report one line: files touched, findings fixed, verify result.
+```
+
+The hook then delegates instead of lecturing — the report never enters the
+main agent's context at all:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Edit|Write",
+      "hooks": [{
+        "type": "command",
+        "command": "sh -c 'f=$(jq -r .tool_input.file_path); uv run uncomment gate \"$f\" --baseline git:HEAD --format text >/dev/null 2>&1; [ $? -eq 1 ] && { echo \"Comment findings in $f - delegate to the comment-fixer subagent, then re-read the file before further edits.\" 1>&2; exit 2; } || exit 0'"
+      }]
+    }]
+  }
+}
+```
+
+**Recipe A — the hook fixes autonomously (headless).** Instead of
+delegating, the hook itself runs a pinned-model headless session and
+verifies, so the main agent never sees the noise at all:
+
+```sh
+uncomment gate "$f" --baseline git:HEAD --format agent > /tmp/report.md || {
+  claude -p --model sonnet --allowedTools "Read,Edit" \
+    "$(cat /tmp/report.md) Fix only these comments in $f; touch nothing else."
+  uncomment verify || git checkout -- "$f"
+  echo "comments auto-fixed in $f - re-read it before further edits" 1>&2
+  exit 2
+}
+```
+
+Trade-offs: per-edit latency rises from ~0.6s to a model call whenever the
+fixer engages, and the main agent's copy of the file goes stale — the exit-2
+message must tell it to re-read.
+
+**Recipe C — fix at turn boundaries.** For heavy editing sessions, keep the
+per-edit hook as a fast tripwire (or drop it) and run the fixer once per
+burst — a Claude Code `Stop` hook or a pre-commit hook that gates the whole
+diff, invokes the fixer, verifies, and only then lets the turn or commit
+complete. Amortizes cost and latency; no mid-edit staleness because the
+main agent is idle when it runs.
 
 If the tool is not installed in the project, `uvx --from
 git+https://github.com/sigman78/uncomment uncomment …` works in both the

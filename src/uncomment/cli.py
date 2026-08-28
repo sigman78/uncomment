@@ -178,7 +178,7 @@ def _read_diff(source: str) -> str:
 
 
 def cmd_gate(args) -> int:
-    from .gate import gate_diff, gate_paths, validate_baseline
+    from .gate import gate_changes, gate_diff, gate_paths, validate_baseline
 
     cfg = _load_config(args)
     if args.diff and args.baseline:
@@ -188,11 +188,17 @@ def cmd_gate(args) -> int:
         result = gate_diff(_read_diff(args.diff), cfg, restrict)
         skipped = result.files_skipped
         baseline_label = f"diff:{'stdin' if args.diff == '-' else args.diff}"
+    elif not args.baseline:
+        raise ToolError("gate needs --baseline DIR|FILE|git:REF or --diff FILE|-")
+    elif not args.paths:
+        # the pathless form: git supplies the changed-file list
+        if not args.baseline.startswith("git:"):
+            raise ToolError("gate without paths needs a git: baseline (or --diff)")
+        validate_baseline(args.baseline, Path("."))
+        result = gate_changes(args.baseline[4:], cfg)
+        skipped = result.files_skipped
+        baseline_label = args.baseline
     else:
-        if not args.baseline:
-            raise ToolError("gate needs --baseline DIR|FILE|git:REF or --diff FILE|-")
-        if not args.paths:
-            raise ToolError("gate with --baseline needs at least one path to scan")
         paths = _validated_paths(args.paths)
         validate_baseline(args.baseline, paths[0])
         result = gate_paths(paths, args.baseline, cfg)
@@ -208,6 +214,41 @@ def cmd_gate(args) -> int:
         "added_code_lines": result.added_code_lines,
     }
     return _emit_and_exit(result.findings, stats, args, cfg)
+
+
+def cmd_verify(args) -> int:
+    import subprocess
+
+    from .gate import validate_baseline, verify_comments_only
+
+    if args.diff and args.baseline:
+        raise ToolError("--diff and --baseline are mutually exclusive")
+    if args.diff:
+        diff_text = _read_diff(args.diff)
+    else:
+        # the pathless form: the tool runs git diff itself; --baseline
+        # git:REF verifies against a snapshot ref (git stash create) so a
+        # fixer's edits verify cleanly amid other uncommitted work
+        baseline = args.baseline or "git:HEAD"
+        if not baseline.startswith("git:"):
+            raise ToolError("verify needs a git: baseline (or --diff FILE|-)")
+        validate_baseline(baseline, Path("."))
+        proc = subprocess.run(
+            ["git", "diff", baseline[4:] or "HEAD", "--"], capture_output=True
+        )
+        if proc.returncode != 0:
+            detail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+            raise ToolError("git diff failed" + (f": {detail[0]}" if detail else ""))
+        diff_text = proc.stdout.decode("utf-8-sig", "replace")
+
+    problems = verify_comments_only(diff_text)
+    if problems:
+        for path, detail in problems:
+            print(f"{path}: NOT comment-only: {detail}")
+        print(f"\n{len(problems)} file(s) with non-comment changes")
+        return 1
+    print("diff is comment-only")
+    return 0
 
 
 def cmd_rules(args) -> int:
@@ -281,6 +322,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="gate the files a unified diff changed, using the diff itself as the "
                              "baseline ('-' reads the diff from stdin)")
     p_gate.set_defaults(fn=cmd_gate)
+
+    p_verify = sub.add_parser(
+        "verify", help="prove working-tree changes touch comments only (for autonomous fixer loops)"
+    )
+    p_verify.add_argument("--diff", metavar="FILE",
+                          help="verify this unified diff instead ('-' reads stdin)")
+    p_verify.add_argument("--baseline",
+                          help="git:REF to diff against (default git:HEAD; use a "
+                               "'git stash create' snapshot to scope to a fixer's own edits)")
+    p_verify.set_defaults(fn=cmd_verify)
 
     p_rules = sub.add_parser("rules", help="list rules")
     p_rules.add_argument("--format", choices=["text", "json"], default="text")

@@ -82,6 +82,7 @@ class SourceFile:
     comments: list[Comment] = field(default_factory=list)
     functions: list[FunctionInfo] = field(default_factory=list)
     code_line_count: int = 0      # lines with code on them (comment-only lines excluded)
+    code_lines: list[str] = field(default_factory=list)  # source with comment bytes blanked
     comment_line_count: int = 0   # docstrings and markers count too
 
 
