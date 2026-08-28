@@ -14,7 +14,7 @@ def _fired(path, src, spec, cfg=None):
     return {f.rule for f in run_rules(extract_source(path, src, spec), cfg or Config())}
 
 
-# ---- UC001: operator verbalization ----
+# UC001: operator verbalization
 
 def test_increment_comment_restates_increment_operator():
     assert "UC001" in _fired("t.c", "void f(void){\n// increment the counter\ncounter++;\n}\n", C)
@@ -41,7 +41,7 @@ def test_operator_words_present():
     assert overlap_ratio("increment the counter", "counter++;") == 1.0
 
 
-# ---- UC002: WHY-guard and continuation lines ----
+# UC002: WHY-guard and continuation lines
 
 def test_why_comment_starting_with_we_is_spared():
     src = "void f(void){\n// We cannot use memcpy here because the regions overlap.\nmemmove(a, b, n);\n}\n"
@@ -73,7 +73,7 @@ def test_capital_lets_with_lowercase_verb_is_still_narration():
     assert "UC002" in _fired("t.js", src, JS)
 
 
-# ---- UC004: diagrams are not banners ----
+# UC004: diagrams are not banners
 
 def test_box_diagram_is_not_a_banner():
     src = (
@@ -89,7 +89,7 @@ def test_plain_banner_still_fires():
     assert "UC004" in _fired("t.c", "// ==========================================\nint x;\n", C)
 
 
-# ---- UC005: formulas, invariant sketches, chained calls ----
+# UC005: formulas, invariant sketches, chained calls
 
 def test_prose_invariant_sketch_is_not_dead_code():
     src = (

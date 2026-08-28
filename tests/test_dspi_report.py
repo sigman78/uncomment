@@ -16,7 +16,7 @@ def _fired(src: str):
     return {f.rule for f in run_rules(extract_source("t.ts", src, TS), Config())}
 
 
-# ---- UC003: runtime data called "the old code" is not edit history ----
+# UC003: runtime data called "the old code" is not edit history
 
 def test_runtime_old_code_is_clean():
     src = ("// Drop any previous result synchronously, BEFORE the device round-trip:\n"
@@ -35,7 +35,7 @@ def test_old_implementation_still_errors():
     assert "UC003" in _fired(src)
 
 
-# ---- UC003: participial-adjective "Fixed <noun>" openers ----
+# UC003: participial-adjective "Fixed <noun>" openers
 
 def test_fixed_adjective_openers_are_clean():
     for text in (
@@ -51,7 +51,7 @@ def test_fixed_bugfix_narration_still_warns():
         assert "UC003" in _fired(f"// {text}\nexport const x = 1;\n"), text
 
 
-# ---- UC005: byte-layout and math glosses are prose ----
+# UC005: byte-layout and math glosses are prose
 
 def test_wire_glosses_are_not_dead_code():
     for text in (
@@ -76,7 +76,7 @@ def test_assignment_to_call_statement_still_fires():
     assert "UC005" in _fired(src)
 
 
-# ---- walk-skip visibility ----
+# walk-skip visibility
 
 def test_unsupported_language_walk_note(tmp_path, capsys):
     for i in range(6):

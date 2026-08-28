@@ -31,7 +31,7 @@ SPREE = OLD + "".join(f"// elaboration line number {i} restates the design choic
 FLOOD = "".join(f"// then we run filler step number {i} of the plan\n" for i in range(14)) + OLD
 
 
-# ---- file-level suppression reaches the gate signals ----
+# file-level suppression reaches the gate signals
 
 def test_marker_suppresses_uc101_file_wide(tmp_path):
     marked = "// uncomment-ignore[UC101]: reviewed, sweep rewrite\n" + SPREE
@@ -64,7 +64,7 @@ def test_marker_line_never_counts_as_prose(tmp_path):
     assert not any(f.rule == "UC101" for f in _gate(tmp_path, old, new))
 
 
-# ---- UC004: Unicode box-drawing banners, diagrams stay exempt ----
+# UC004: Unicode box-drawing banners, diagrams stay exempt
 
 def test_unicode_banners_flag():
     for line in ("/* ── Section ────── */", "/* ══ init ══════ */", "/* ━━━━━━━━━━ */"):
@@ -85,7 +85,7 @@ def test_slash_heavy_prose_is_not_a_banner():
     assert "UC004" not in _fired(src)
 
 
-# ---- UC009: alignment padding is not length ----
+# UC009: alignment padding is not length
 
 def test_alignment_padding_does_not_trip_uc009():
     pad = " " * 44

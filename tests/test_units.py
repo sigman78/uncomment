@@ -7,7 +7,7 @@ from uncomment.config import load_config
 from uncomment.textutil import overlap_ratio, sentences, split_identifier, stem
 
 
-# ---- stemming: both sides of a comparison must agree ----
+# stemming: both sides of a comparison must agree
 
 def test_stem_verb_and_identifier_agree():
     assert stem("frobnicates") == stem("frobnicate")
@@ -33,7 +33,7 @@ def test_sentences_split():
     assert sentences("") == []
 
 
-# ---- config discovery order ----
+# config discovery order
 
 def _write(p, text):
     p.parent.mkdir(parents=True, exist_ok=True)
