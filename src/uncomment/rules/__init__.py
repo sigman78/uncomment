@@ -41,6 +41,8 @@ GATE_SIGNALS: list[tuple[str, str, str, str]] = [
      "Edit adds far more noisy comment lines than code lines relative to the baseline."),
     ("UC101", "warn", "comment-amplification (gate only)",
      "Edit multiplies a file's prose comments — the 'sees comments, writes more comments' pattern."),
+    ("UC102", "info", "self-granted exception (gate only)",
+     "Edit adds a file-wide uncomment-ignore-file suppression; a reviewer should confirm the reason."),
 ]
 
 
@@ -88,8 +90,25 @@ def is_license_header(comment: Comment) -> bool:
 # owned, auditable escape hatch: `uncomment-ignore[UC003]: reason` inside a
 # comment suppresses the listed rules for it; without a rule list it
 # suppresses everything anchored inside its target. A standalone marker
-# comment also covers the comment or line directly below it.
-_IGNORE_RE = re.compile(r"uncomment-ignore(?:\[(?P<rules>[A-Za-z0-9 ,]+)\])?")
+# comment also covers the comment or line directly below it. The lookahead
+# keeps the file-wide form from being misread as a bare span marker.
+_IGNORE_RE = re.compile(r"uncomment-ignore(?!-file)(?:\[(?P<rules>[A-Za-z0-9 ,]+)\])?")
+
+# `uncomment-ignore-file[UC002]: reason` suppresses the listed rules for the
+# WHOLE file — the mark-out for legitimate rule-shaped house patterns (a
+# parser transcribing a spec's numbered steps, say). The rule list is
+# mandatory: no marker form turns off everything file-wide
+_IGNORE_FILE_RE = re.compile(r"uncomment-ignore-file\[(?P<rules>[A-Za-z0-9 ,]+)\]")
+
+
+def file_wide_rules(sf: SourceFile) -> frozenset[str]:
+    """Rule ids granted a file-wide exception by uncomment-ignore-file
+    markers anywhere in the file."""
+    rules: set[str] = set()
+    for c in sf.comments:
+        for m in _IGNORE_FILE_RE.finditer(c.content):
+            rules.update(r.strip() for r in m.group("rules").split(",") if r.strip())
+    return frozenset(rules)
 
 
 def _suppressions(sf: SourceFile) -> list[tuple[frozenset[str] | None, int, int]]:
@@ -129,11 +148,11 @@ def _is_marker(c: Comment) -> bool:
 
 
 def file_suppressed_rules(sf: SourceFile) -> frozenset[str]:
-    """Rule ids explicitly named by any uncomment-ignore marker in the file.
-    File-level gate signals (UC100/UC101) honor these wherever the marker
-    sits — a span-scoped marker cannot reach them, so an explicit rule list
-    anywhere in the file is the suppression contract for them."""
-    rules: set[str] = set()
+    """Rule ids the file-level gate signals (UC100/UC101/UC102) honor: any
+    file-wide marker, plus rule-listed span markers wherever they sit — a
+    span cannot reach a file-level signal, so an explicit rule list anywhere
+    in the file is their suppression contract."""
+    rules: set[str] = set(file_wide_rules(sf))
     for c in sf.comments:
         m = _IGNORE_RE.search(c.content)
         if m and m.group("rules"):
@@ -166,10 +185,11 @@ def run_rules(sf: SourceFile, cfg: Config) -> list[Finding]:
     from dataclasses import replace
 
     sups = _suppressions(sf)
+    file_wide = file_wide_rules(sf)
     sf = replace(sf, comments=visible_comments(sf, cfg))
     findings: list[Finding] = []
     for r in _REGISTRY:
-        if not cfg.rule_enabled(r.id):
+        if not cfg.rule_enabled(r.id) or r.id in file_wide:
             continue
         rule_findings = []
         for f in r.fn(sf, cfg):
