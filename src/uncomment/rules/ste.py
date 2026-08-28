@@ -54,7 +54,10 @@ def long_sentence(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
                 line=c.start_line,
                 end_line=c.end_line,
                 message=f"sentence has {n} words (STE limit: {cfg.ste_max_sentence_words})",
-                action="Split it into short sentences. One instruction or fact per sentence.",
+                action=(
+                    "Reword into short sentences, one instruction or fact each. Do not just "
+                    "add periods to line ends; list items may stay as fragments."
+                ),
                 excerpt=first_line(worst),
             )
 
@@ -172,7 +175,9 @@ def long_paragraph(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         if _skip(c):
             continue
         for para in re.split(r"\n\s*\n", _prose(c)):
-            n = len(sentences(para))
+            # hard count: only real [.!?] sentences of flowing prose, so
+            # clause splits and punctuated fragments cannot inflate it
+            n = len(sentences(para, soft=False))
             if n > cfg.ste_max_paragraph_sentences:
                 yield Finding(
                     rule="STE04",

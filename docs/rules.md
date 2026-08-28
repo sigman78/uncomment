@@ -114,3 +114,10 @@ Technical English): short sentences, active voice, one simple word per
 meaning. They never gate by default; raise them via
 [severity overrides](configuration.md#disable-and-severity) if you want them
 to.
+
+Sentence measurement understands comment structure: doc-tag lines, list
+items (`- probe the bus`), and `fast - no checksum` legend lines each count
+on their own for the length rule, and the paragraph rule counts only real
+`[.!?]`-terminated sentences of flowing prose. Fragments need no terminal
+periods — adding periods to line ends is never the fix, and the STE01 action
+text says so.

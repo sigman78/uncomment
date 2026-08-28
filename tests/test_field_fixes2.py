@@ -88,6 +88,51 @@ def test_legend_comments_are_not_dead_code():
         assert "UC005" not in _fired(path, src, spec), src
 
 
+# ---- STE01/STE04: no incentive to punctuate fragments ----
+
+def test_list_and_legend_lines_do_not_trip_ste01():
+    src = ("/* supported sync modes:\n"
+           " *   fast - skip the checksum pass entirely on trusted links\n"
+           " *   safe - verify every block against the stored digest\n"
+           " *   auto - pick the mode by transfer size and link quality\n"
+           " */\n"
+           "int sync_mode;\n")
+    assert "STE01" not in _fired("t.c", src, C)
+    bullets = ("/* startup checklist:\n"
+               " *   - probe the sensor bus and log every absent device\n"
+               " *   - restore the persisted calibration from the keystore\n"
+               " *   - arm the watchdog before the first frame is drawn\n"
+               " */\n"
+               "void boot(void);\n")
+    assert "STE01" not in _fired("t.c", bullets, C)
+
+
+def test_punctuated_fragments_cannot_manufacture_ste04():
+    # eight period-terminated fragments in list form: STE04 counts flowing
+    # prose only, so the punctuation trick does not create a long paragraph
+    items = "".join(f" *   - checklist item number {i} for the boot path.\n" for i in range(8))
+    src = "/* startup order:\n" + items + " */\nvoid boot(void);\n"
+    assert "STE04" not in _fired("t.c", src, C)
+
+
+def test_real_long_paragraph_still_trips_ste04():
+    prose = ("/*\n"
+             " * The cache grows on demand. It never shrinks. Eviction is FIFO.\n"
+             " * A miss inserts the key. A hit refreshes nothing. Size tracks\n"
+             " * inserts only. Clearing keeps the capacity for the next run.\n"
+             " */\n"
+             "int capacity(void);\n")
+    assert "STE04" in _fired("t.c", prose, C)
+
+
+def test_ste01_action_discourages_period_gaming():
+    src = ("// this sentence keeps going with many small words so that it runs "
+           "well past the twenty word simplified technical english limit today\n"
+           "int x;\n")
+    findings = [f for f in run_rules(extract_source("t.c", src, C), Config()) if f.rule == "STE01"]
+    assert findings and "Do not just add periods" in findings[0].action
+
+
 def test_single_line_dead_code_still_fires():
     cases = [
         ("t.py", "def f():\n    y = 2\n    # x = compute()\n    return y\n", PY),

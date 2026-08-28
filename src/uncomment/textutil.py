@@ -106,27 +106,42 @@ def overlap_ratio(comment_text: str, code: str) -> float:
 
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+|\n\s*\n")
+_HARD_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 # spaced dashes and mapping arrows join independent clauses; a doc-tag table
-# without terminal periods must not read as one 50-word sentence
-_CLAUSE_SPLIT_RE = re.compile(r"\s+(?:—|–|--|->|=>)\s+")
+# or a "fast - no checksum" legend without terminal periods must not read as
+# one 50-word sentence
+_CLAUSE_SPLIT_RE = re.compile(r"\s+(?:—|–|--|->|=>|-)\s+")
 _TAG_LINE_RE = re.compile(r"^\s*[@\\]\w+")
+_LIST_LINE_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
 
 
-def sentences(text: str) -> list[str]:
+def sentences(text: str, *, soft: bool = True) -> list[str]:
     """Naive sentence splitter; good enough for comment prose. Doc-tag lines
-    (@param, \\return) each start their own segment."""
-    blocks: list[list[str]] = [[]]
+    (@param, \\return) and list items each start their own segment.
+
+    soft=True (STE01's view) also splits at semicolons and spaced
+    dash/arrow clauses — the longest run a reader takes in one breath.
+    soft=False (STE04's view) counts only [.!?]-terminated sentences of
+    flowing prose and skips tag/list structure entirely, so punctuating
+    fragments can never manufacture a "long paragraph"."""
+    blocks: list[tuple[bool, list[str]]] = [(False, [])]
     for line in text.splitlines():
-        if _TAG_LINE_RE.match(line):
-            blocks.append([])
-        blocks[-1].append(line)
+        if _TAG_LINE_RE.match(line) or _LIST_LINE_RE.match(line):
+            blocks.append((True, [line]))
+        else:
+            blocks[-1][1].append(line)
     out: list[str] = []
-    for block in blocks:
-        flat = re.sub(r"\s+", " ", "\n".join(block)).strip()
+    for structured, lines in blocks:
+        if not soft and structured:
+            continue
+        flat = re.sub(r"\s+", " ", "\n".join(lines)).strip()
         if not flat:
             continue
-        for part in _SENTENCE_SPLIT_RE.split(flat):
-            out.extend(p.strip() for p in _CLAUSE_SPLIT_RE.split(part) if p.strip())
+        if soft:
+            for part in _SENTENCE_SPLIT_RE.split(flat):
+                out.extend(p.strip() for p in _CLAUSE_SPLIT_RE.split(part) if p.strip())
+        else:
+            out.extend(s.strip() for s in _HARD_SENTENCE_RE.split(flat) if s.strip())
     return out
 
 
