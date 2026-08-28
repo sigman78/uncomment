@@ -63,3 +63,14 @@ static int sync_mode = 0;
  *   - arm the watchdog before the first frame
  */
 void boot_sequence(void);
+
+/* ┌──────────┬───────────┐
+ * │ hdr      │ payload   │
+ * └──────────┴───────────┘
+ */
+int parse_frame(void);
+
+typedef enum {
+    SCREEN_HOME,   /* landing view                                            */
+    SCREEN_CONFIG, /* settings editor                                         */
+} screen_id_t;
