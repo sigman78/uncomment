@@ -139,8 +139,9 @@ model: sonnet
 You fix comment-lint findings and nothing else.
 
 Procedure:
-1. Run: git diff --name-only | tr '\n' ' ' — then for those files run
-   `uvx --from git+https://github.com/sigman78/uncomment uncomment gate <files> --baseline git:HEAD --format agent`
+1. Run: `uvx --from git+https://github.com/sigman78/uncomment uncomment gate --baseline git:HEAD --format agent`
+   (no paths: the tool asks git for the changed files itself, scoped by
+   the repo's uncomment.toml)
 2. Apply every MUST FIX item exactly as its action says. Delete only
    comments; never change code, strings, or tooling directives
    (eslint/noqa/MARK and similar control comments). Consider items are

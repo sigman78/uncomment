@@ -178,7 +178,7 @@ def _read_diff(source: str) -> str:
 
 
 def cmd_gate(args) -> int:
-    from .gate import gate_diff, gate_paths, validate_baseline
+    from .gate import gate_changes, gate_diff, gate_paths, validate_baseline
 
     cfg = _load_config(args)
     if args.diff and args.baseline:
@@ -188,11 +188,17 @@ def cmd_gate(args) -> int:
         result = gate_diff(_read_diff(args.diff), cfg, restrict)
         skipped = result.files_skipped
         baseline_label = f"diff:{'stdin' if args.diff == '-' else args.diff}"
+    elif not args.baseline:
+        raise ToolError("gate needs --baseline DIR|FILE|git:REF or --diff FILE|-")
+    elif not args.paths:
+        # the pathless form: git supplies the changed-file list
+        if not args.baseline.startswith("git:"):
+            raise ToolError("gate without paths needs a git: baseline (or --diff)")
+        validate_baseline(args.baseline, Path("."))
+        result = gate_changes(args.baseline[4:], cfg)
+        skipped = result.files_skipped
+        baseline_label = args.baseline
     else:
-        if not args.baseline:
-            raise ToolError("gate needs --baseline DIR|FILE|git:REF or --diff FILE|-")
-        if not args.paths:
-            raise ToolError("gate with --baseline needs at least one path to scan")
         paths = _validated_paths(args.paths)
         validate_baseline(args.baseline, paths[0])
         result = gate_paths(paths, args.baseline, cfg)

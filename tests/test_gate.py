@@ -166,6 +166,53 @@ def test_git_baseline_multi_file_rename(tmp_path):
     assert all(str(f.path).endswith("a.js") for f in result.findings)
 
 
+def test_pathless_gate_uses_git_change_list(tmp_path, monkeypatch, capsys):
+    import json
+
+    from uncomment.cli import main
+
+    repo = _git_repo(tmp_path)
+    (repo / "touched.js").write_text(OLD, encoding="utf-8")
+    (repo / "untouched.js").write_text("// A settled note that never changes.\nconst u = 1;\n", encoding="utf-8")
+    (repo / "excluded.js").write_text(OLD, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "base")
+
+    (repo / "touched.js").write_text(NEW, encoding="utf-8")          # differs from base
+    (repo / "excluded.js").write_text(NEW, encoding="utf-8")         # differs, but excluded
+    (repo / "fresh.js").write_text(NEW, encoding="utf-8")            # untracked
+    (repo / "notes.txt").write_text("changed\n", encoding="utf-8")   # unsupported
+
+    monkeypatch.chdir(repo)
+    code = main(["gate", "--baseline", "git:HEAD", "--exclude", "excluded.js",
+                 "--format", "json", "--fail-on", "never"])
+    doc = json.loads(capsys.readouterr().out)
+    assert code == 0
+    # only the changed+selected files were gated: untouched.js not scanned
+    assert doc["stats"]["files_scanned"] == 2
+    assert doc["stats"]["files_skipped"] == 2  # excluded.js + notes.txt
+    paths = {f["path"] for f in doc["findings"]}
+    assert paths and all("touched" in p or "fresh" in p for p in paths)
+
+
+def test_pathless_gate_outside_repo_is_loud(tmp_path, monkeypatch, capsys):
+    from uncomment.cli import main
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["gate", "--baseline", "git:HEAD"]) == 2
+    err = capsys.readouterr().err
+    assert "repository" in err
+
+
+def test_pathless_gate_needs_git_baseline(tmp_path, monkeypatch, capsys):
+    from uncomment.cli import main
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "base").mkdir()
+    assert main(["gate", "--baseline", str(tmp_path / "base")]) == 2
+    assert "needs a git: baseline" in capsys.readouterr().err
+
+
 def test_gate_paths_aggregates(tmp_path):
     old_dir = tmp_path / "old"
     new_dir = tmp_path / "new"

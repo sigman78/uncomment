@@ -597,6 +597,60 @@ def gate_diff(diff_text: str, cfg: Config, restrict: list[Path] | None = None,
     return result
 
 
+def gate_changes(ref: str, cfg: Config, root: Path | None = None) -> GateResult:
+    """The pathless gate: git decides the file list — tracked files changed
+    relative to REF plus untracked (not ignored) ones — and the config's
+    include/exclude decides the scope. One command for hooks and fixer
+    agents, no name-only piping."""
+    from .filtering import is_generated, selected
+
+    cwd = (root or Path.cwd()).resolve()
+    top = _git_repo_top(cwd)
+    if top is None:
+        raise ToolError("gate without paths needs to run inside a git repository")
+
+    rels: list[str] = []
+    for cmd in (
+        ["git", "diff", "--name-only", "-z", ref or "HEAD", "--"],
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    ):
+        try:
+            out = subprocess.run(cmd, cwd=top, capture_output=True, text=True, check=True).stdout
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip().splitlines()
+            raise ToolError(
+                f"git could not list changes vs '{ref or 'HEAD'}'"
+                + (f": {detail[0]}" if detail else "")
+            ) from None
+        rels.extend(r for r in out.split("\0") if r.strip())
+
+    seen: set[str] = set()
+    files: list[Path] = []
+    skipped = 0
+    for rel in rels:
+        if rel in seen:
+            continue
+        seen.add(rel)
+        disk = top / rel
+        if not disk.is_file():
+            continue  # deleted in the working tree
+        if Path(rel).suffix.lower() not in EXTENSIONS or not selected(rel, cfg):
+            skipped += 1
+            continue
+        if cfg.skip_generated and is_generated(disk):
+            skipped += 1
+            continue
+        try:
+            display = disk.resolve().relative_to(Path.cwd())
+        except ValueError:
+            display = disk
+        files.append(display)
+
+    result = _gate(files, _GitBaseline(ref), cfg, lambda f: top)
+    result.files_skipped = skipped
+    return result
+
+
 def _code_fingerprint(path_label: str, text: str, spec) -> list[str]:
     """Comment-stripped, whitespace-trimmed, non-blank code lines. Two files
     with equal fingerprints differ only in comments and blank space."""
