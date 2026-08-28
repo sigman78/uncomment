@@ -346,7 +346,7 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
     # rewrite (old comments replaced by reworded ones) is not amplification —
     # only a file whose prose actually multiplied is. Elaboration sprees are
     # still caught even when every comment evades the per-comment rules.
-    # the file-level gate signals honor an explicit uncomment-ignore[RULE]
+    # the file-level gate signals honor an explicit unwaffle-ignore[RULE]
     # anywhere in the file — span-scoped markers cannot reach them
     file_sups = file_suppressed_rules(st.sf)
 

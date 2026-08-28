@@ -4,11 +4,11 @@ alignment padding."""
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.gate import gate_file
-from uncomment.languages import C
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.gate import gate_file
+from unwaffle.languages import C
+from unwaffle.rules import run_rules
 
 
 def _fired(src: str, cfg: Config | None = None):
@@ -34,14 +34,14 @@ FLOOD = "".join(f"// then we run filler step number {i} of the plan\n" for i in 
 # file-level suppression reaches the gate signals
 
 def test_marker_suppresses_uc101_file_wide(tmp_path):
-    marked = "// uncomment-ignore[UC101]: reviewed, sweep rewrite\n" + SPREE
+    marked = "// unwaffle-ignore[UC101]: reviewed, sweep rewrite\n" + SPREE
     old = "// The parser keeps one token of lookahead here.\n" + OLD
     assert any(f.rule == "UC101" for f in _gate(tmp_path, old, old + SPREE))
     assert not any(f.rule == "UC101" for f in _gate(tmp_path, old, old + marked))
 
 
 def test_marker_suppresses_uc100_file_wide(tmp_path):
-    marked = "// uncomment-ignore[UC100]: generated test fixture\n" + FLOOD
+    marked = "// unwaffle-ignore[UC100]: generated test fixture\n" + FLOOD
     assert any(f.rule == "UC100" for f in _gate(tmp_path, OLD, FLOOD))
     assert not any(f.rule == "UC100" for f in _gate(tmp_path, OLD, marked))
 
@@ -49,7 +49,7 @@ def test_marker_suppresses_uc100_file_wide(tmp_path):
 def test_bare_marker_elsewhere_does_not_clear_gate_signals(tmp_path):
     # file-wide clearing demands an explicit rule list; a bare marker only
     # covers its own span, and here that span is an unrelated tail line
-    marked = FLOOD + "// uncomment-ignore: reviewed elsewhere\nint tail;\n"
+    marked = FLOOD + "// unwaffle-ignore: reviewed elsewhere\nint tail;\n"
     assert any(f.rule == "UC100" for f in _gate(tmp_path, OLD, marked))
 
 
@@ -59,7 +59,7 @@ def test_marker_line_never_counts_as_prose(tmp_path):
     old = "".join(f"// handler number {i} owns its retry budget here\n" for i in range(9)) + OLD
     new = old.replace(
         "// handler number 8 owns its retry budget here\n",
-        "// handler number 8 owns its retry budget here\n// uncomment-ignore[UC009]: aligned\n",
+        "// handler number 8 owns its retry budget here\n// unwaffle-ignore[UC009]: aligned\n",
     )
     assert not any(f.rule == "UC101" for f in _gate(tmp_path, old, new))
 

@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-from uncomment.cli import main
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.languages import spec_for_path
-from uncomment.rules import run_rules
+from unwaffle.cli import main
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.languages import spec_for_path
+from unwaffle.rules import run_rules
 
 TS = spec_for_path("x.ts")
 

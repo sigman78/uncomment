@@ -56,7 +56,7 @@ def render_json(findings: list[Finding], stats: dict, cfg=None) -> str:
     counts = Counter(f.severity for f in findings)
     doc = {
         "schema_version": SCHEMA_VERSION,
-        "tool": "uncomment",
+        "tool": "unwaffle",
         "stats": stats,
         "summary": {
             "error": counts[Severity.ERROR],
@@ -235,9 +235,9 @@ def render_sarif(findings: list[Finding], stats: dict, cfg=None) -> str:
             {
                 "tool": {
                     "driver": {
-                        "name": "uncomment",
+                        "name": "unwaffle",
                         "version": __version__,
-                        "informationUri": "https://github.com/sigman78/uncomment",
+                        "informationUri": "https://github.com/sigman78/unwaffle",
                         "rules": descriptors,
                     }
                 },

@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from uncomment.cli import main
-from uncomment.config import Config
-from uncomment.diffio import parse_diff, reverse_apply
-from uncomment.gate import gate_diff
-from uncomment.model import ToolError
+from unwaffle.cli import main
+from unwaffle.config import Config
+from unwaffle.diffio import parse_diff, reverse_apply
+from unwaffle.gate import gate_diff
+from unwaffle.model import ToolError
 
 OLD = """\
 // Debounce keeps the request count low.

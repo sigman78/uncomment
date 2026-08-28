@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from uncomment.cli import main
+from unwaffle.cli import main
 
 CORPUS = Path(__file__).parent / "corpus"
 NOISY_C = str(CORPUS / "c" / "agent_noise.c")
@@ -33,7 +33,7 @@ def test_fail_on_error_ignores_warnings(capsys):
 def test_json_format_schema(capsys):
     main(["check", NOISY_C, "--fail-on", "never", "--format", "json"])
     doc = json.loads(capsys.readouterr().out)
-    assert doc["tool"] == "uncomment"
+    assert doc["tool"] == "unwaffle"
     assert doc["schema_version"] == 1
     assert doc["summary"]["error"] >= 1
     assert all({"rule", "severity", "path", "line", "message", "action"} <= set(f) for f in doc["findings"])

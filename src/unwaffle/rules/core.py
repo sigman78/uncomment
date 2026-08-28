@@ -112,7 +112,7 @@ def narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
             )
 
 
-# uncomment-ignore[UC003]: this comment must quote the phrases the rule detects
+# unwaffle-ignore[UC003]: this comment must quote the phrases the rule detects
 # UC003 works in two evidence tiers:
 #  - explicit edit context ("as requested", "the previous version") -> ERROR
 #  - a past-tense opener alone -> WARN; present tense ("Adds a newline…") is a
@@ -148,7 +148,7 @@ _CHANGE_INNER_RE = re.compile(
     # "no longer needed/necessary" is ownership/lifetime prose ("free the map
     # when it's no longer needed") — only behavioral change forms count
     r"|no longer (uses|calls|requires|relies)"
-    # uncomment-ignore[UC003]: this comment must quote the phrases the rule detects
+    # unwaffle-ignore[UC003]: this comment must quote the phrases the rule detects
     # only the version-history form: "was removed from the stack" is runtime
     # prose (jsoup's parser), "was removed in 2.0" is edit history
     r"|instead of the (old|previous)|was (removed|changed|renamed|moved) in)\b",

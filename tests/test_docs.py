@@ -3,10 +3,10 @@ interface files are where documentation belongs — never suggest moving it."""
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.languages import C, RUST, TS, is_interface_file
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.languages import C, RUST, TS, is_interface_file
+from unwaffle.rules import run_rules
 
 DOXYGEN_DOC = (
     "/**\n"

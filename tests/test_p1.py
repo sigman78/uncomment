@@ -1,16 +1,16 @@
 """P1 gate semantics: fuzzy tree-wide baseline matching, noise-density flood,
-per-line directive exemption, uncomment-ignore suppressions, UC003 tiers."""
+per-line directive exemption, unwaffle-ignore suppressions, UC003 tiers."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.gate import gate_file, gate_paths
-from uncomment.languages import C, JS
-from uncomment.model import Severity
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.gate import gate_file, gate_paths
+from unwaffle.languages import C, JS
+from unwaffle.model import Severity
+from unwaffle.rules import run_rules
 
 
 def _tree(tmp_path, name: str, files: dict[str, str]) -> Path:
@@ -111,10 +111,10 @@ def test_nolint_paren_with_rationale_still_exempt():
     assert sf.comments[0].is_directive
 
 
-# uncomment-ignore suppressions
+# unwaffle-ignore suppressions
 
 def test_inline_suppression_of_named_rule():
-    src = "// Changed the retry logic as requested uncomment-ignore[UC003]: policy exception\nint x;\n"
+    src = "// Changed the retry logic as requested unwaffle-ignore[UC003]: policy exception\nint x;\n"
     fired = {f.rule for f in _rules_fired("t.c", src, C)}
     assert "UC003" not in fired
 
@@ -122,7 +122,7 @@ def test_inline_suppression_of_named_rule():
 def test_standalone_marker_covers_next_comment():
     src = (
         "void f(void) {\n"
-        "    // uncomment-ignore[UC005]: kept as a worked example\n"
+        "    // unwaffle-ignore[UC005]: kept as a worked example\n"
         "    // int old = compute();\n"
         "    // use(old);\n"
         "}\n"
@@ -133,7 +133,7 @@ def test_standalone_marker_covers_next_comment():
 
 def test_suppression_is_rule_scoped():
     src = (
-        "// uncomment-ignore[UC005]\n"
+        "// unwaffle-ignore[UC005]\n"
         "// Changed the retry logic as requested\n"
         "int x;\n"
     )
@@ -143,7 +143,7 @@ def test_suppression_is_rule_scoped():
 
 def test_marker_comment_is_not_judged_or_counted(tmp_path):
     old = _tree(tmp_path, "old", {"a.c": "int x;\n"})
-    new = _tree(tmp_path, "new", {"a.c": "// uncomment-ignore[UC001]: reviewed\nint x;\n"})
+    new = _tree(tmp_path, "new", {"a.c": "// unwaffle-ignore[UC001]: reviewed\nint x;\n"})
     findings, _, stats = gate_file(new / "a.c", str(old), new, Config())
     assert findings == []
     assert stats["new_comments"] == 0

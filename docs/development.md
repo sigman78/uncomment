@@ -2,7 +2,7 @@
 
 ```console
 uv run pytest
-uv run uncomment check src/ tests/test_*.py   # dogfood: CI enforces this
+uv run unwaffle check src/ tests/test_*.py   # dogfood: CI enforces this
 ```
 
 ## The corpus contract

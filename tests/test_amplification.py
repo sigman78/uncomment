@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from uncomment.config import Config
-from uncomment.gate import gate_file
+from unwaffle.config import Config
+from unwaffle.gate import gate_file
 
 OLD = (
     "// The parser keeps one token of lookahead.\n"
@@ -66,7 +66,7 @@ def test_few_new_comments_do_not_amplify(tmp_path):
     assert not any(f.rule == "UC101" for f in findings)
 
 
-def test_uncommented_file_gets_no_amplification(tmp_path):
+def test_commentless_file_gets_no_amplification(tmp_path):
     old_text = "export function parse(src) {\n  return src.trim();\n}\n"
     old, new = _dirs(tmp_path, old_text, NEW)
     findings, _, _ = gate_file(new / "a.js", str(old), new, Config())

@@ -3,11 +3,11 @@ formula recognition, chained-call dead code."""
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.languages import C, GO, JS
-from uncomment.rules import run_rules
-from uncomment.textutil import code_words, overlap_ratio
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.languages import C, GO, JS
+from unwaffle.rules import run_rules
+from unwaffle.textutil import code_words, overlap_ratio
 
 
 def _fired(path, src, spec, cfg=None):

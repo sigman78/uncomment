@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from uncomment.cli import main
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.languages import JS
-from uncomment.model import ToolError
-from uncomment.rules import run_rules, wording_text
+from unwaffle.cli import main
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.languages import JS
+from unwaffle.model import ToolError
+from unwaffle.rules import run_rules, wording_text
 
 
 def _fired(src: str, cfg: Config | None = None) -> set[str]:
@@ -66,9 +66,9 @@ def test_partial_word_never_matches():
 
 
 def test_empty_term_is_a_config_error(tmp_path):
-    from uncomment.config import load_config
+    from unwaffle.config import load_config
 
-    cfg_file = tmp_path / "uncomment.toml"
+    cfg_file = tmp_path / "unwaffle.toml"
     cfg_file.write_text('approved-terms = ["ok", " "]\n', encoding="utf-8")
     with pytest.raises(ToolError, match="empty term"):
         load_config(tmp_path)
@@ -80,5 +80,5 @@ def test_toml_config_end_to_end(tmp_path, capsys):
     )
     assert main(["check", str(tmp_path / "a.js")]) == 1
     capsys.readouterr()
-    (tmp_path / "uncomment.toml").write_text('approved-terms = ["Fixed Income"]\n', encoding="utf-8")
+    (tmp_path / "unwaffle.toml").write_text('approved-terms = ["Fixed Income"]\n', encoding="utf-8")
     assert main(["check", str(tmp_path / "a.js")]) == 0

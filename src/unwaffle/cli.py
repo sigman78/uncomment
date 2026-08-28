@@ -144,12 +144,12 @@ def cmd_check(args) -> int:
     files = discover_files(paths, cfg, unsupported)
     skipped = _skipped_explicit(paths)
     if skipped:
-        print(f"uncomment: note: {skipped} unsupported file(s) skipped", file=sys.stderr)
+        print(f"unwaffle: note: {skipped} unsupported file(s) skipped", file=sys.stderr)
     notable = [(ext, n) for ext, n in unsupported.most_common(5) if n >= 5]
     if notable:
         shown = ", ".join(f"{ext} x{n}" for ext, n in notable)
         print(
-            f"uncomment: note: {sum(unsupported.values())} file(s) in unsupported "
+            f"unwaffle: note: {sum(unsupported.values())} file(s) in unsupported "
             f"languages not scanned ({shown})",
             file=sys.stderr,
         )
@@ -304,10 +304,10 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(
-        prog="uncomment",
+        prog="unwaffle",
         description="Lint and gate overly detailed comments introduced by coding agents.",
     )
-    parser.add_argument("--version", action="version", version=f"uncomment {__version__}")
+    parser.add_argument("--version", action="version", version=f"unwaffle {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_check = sub.add_parser("check", help="scan all comments in the given paths")
@@ -341,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.fn(args)
     except (ToolError, OSError) as exc:
-        print(f"uncomment: error: {exc}", file=sys.stderr)
+        print(f"unwaffle: error: {exc}", file=sys.stderr)
         return 2
 
 

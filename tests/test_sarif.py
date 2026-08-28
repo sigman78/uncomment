@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from uncomment.cli import main
+from unwaffle.cli import main
 
 CORPUS = Path(__file__).parent / "corpus"
 NOISY_C = str(CORPUS / "c" / "agent_noise.c")
@@ -21,7 +21,7 @@ def test_sarif_structure_and_levels(capsys):
     assert doc["version"] == "2.1.0"
     run = doc["runs"][0]
     driver = run["tool"]["driver"]
-    assert driver["name"] == "uncomment"
+    assert driver["name"] == "unwaffle"
     assert driver["version"]
     rule_ids = [r["id"] for r in driver["rules"]]
     assert rule_ids == sorted(set(rule_ids))

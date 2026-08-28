@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from uncomment.cli import discover_files, main
-from uncomment.config import Config, load_config, parse_disable_arg
-from uncomment.extract import extract_source
-from uncomment.languages import C, JS
-from uncomment.model import ToolError
-from uncomment.report import to_ascii
-from uncomment.rules import run_rules
+from unwaffle.cli import discover_files, main
+from unwaffle.config import Config, load_config, parse_disable_arg
+from unwaffle.extract import extract_source
+from unwaffle.languages import C, JS
+from unwaffle.model import ToolError
+from unwaffle.report import to_ascii
+from unwaffle.rules import run_rules
 
 NOISY = "// utilize the buffer in order to facilitate reads\nint x;\n"
 
@@ -109,16 +109,16 @@ def test_config_errors_exit_2_via_cli(tmp_path, capsys):
     assert "unknown key" in capsys.readouterr().err
 
 
-def test_tool_uncomment_table_works_in_uncomment_toml(tmp_path):
+def test_tool_unwaffle_table_works_in_unwaffle_toml(tmp_path):
     proj = tmp_path / "proj"
     proj.mkdir()
-    (proj / "uncomment.toml").write_text(
-        '[tool.uncomment]\ndisable = ["STE"]\n', encoding="utf-8"
+    (proj / "unwaffle.toml").write_text(
+        '[tool.unwaffle]\ndisable = ["STE"]\n', encoding="utf-8"
     )
     cfg = load_config(proj)
     assert cfg.disable == ["STE"]
     # bare keys keep working too
-    (proj / "uncomment.toml").write_text('disable = ["UC011"]\n', encoding="utf-8")
+    (proj / "unwaffle.toml").write_text('disable = ["UC011"]\n', encoding="utf-8")
     assert load_config(proj).disable == ["UC011"]
 
 
@@ -133,12 +133,12 @@ def test_disable_arg_rejects_empty_and_bogus_entries():
 # version / output encoding
 
 def test_version_flag(capsys):
-    from uncomment import __version__
+    from unwaffle import __version__
 
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert f"uncomment {__version__}" in capsys.readouterr().out
+    assert f"unwaffle {__version__}" in capsys.readouterr().out
 
 
 def test_ascii_output_flag(tmp_path, capsys):

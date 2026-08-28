@@ -42,7 +42,7 @@ GATE_SIGNALS: list[tuple[str, str, str, str]] = [
     ("UC101", "warn", "comment-amplification (gate only)",
      "Edit multiplies a file's prose comments — the 'sees comments, writes more comments' pattern."),
     ("UC102", "info", "self-granted exception (gate only)",
-     "Edit adds a file-wide uncomment-ignore-file suppression; a reviewer should confirm the reason."),
+     "Edit adds a file-wide unwaffle-ignore-file suppression; a reviewer should confirm the reason."),
 ]
 
 
@@ -87,22 +87,22 @@ def is_license_header(comment: Comment) -> bool:
     return at_top and bool(_LICENSE_RE.search(comment.content))
 
 
-# owned, auditable escape hatch: `uncomment-ignore[UC003]: reason` inside a
+# owned, auditable escape hatch: `unwaffle-ignore[UC003]: reason` inside a
 # comment suppresses the listed rules for it; without a rule list it
 # suppresses everything anchored inside its target. A standalone marker
 # comment also covers the comment or line directly below it. The lookahead
 # keeps the file-wide form from being misread as a bare span marker.
-_IGNORE_RE = re.compile(r"uncomment-ignore(?!-file)(?:\[(?P<rules>[A-Za-z0-9 ,]+)\])?")
+_IGNORE_RE = re.compile(r"unwaffle-ignore(?!-file)(?:\[(?P<rules>[A-Za-z0-9 ,]+)\])?")
 
-# `uncomment-ignore-file[UC002]: reason` suppresses the listed rules for the
+# `unwaffle-ignore-file[UC002]: reason` suppresses the listed rules for the
 # WHOLE file — the mark-out for legitimate rule-shaped house patterns (a
 # parser transcribing a spec's numbered steps, say). The rule list is
 # mandatory: no marker form turns off everything file-wide
-_IGNORE_FILE_RE = re.compile(r"uncomment-ignore-file\[(?P<rules>[A-Za-z0-9 ,]+)\]")
+_IGNORE_FILE_RE = re.compile(r"unwaffle-ignore-file\[(?P<rules>[A-Za-z0-9 ,]+)\]")
 
 
 def file_wide_rules(sf: SourceFile) -> frozenset[str]:
-    """Rule ids granted a file-wide exception by uncomment-ignore-file
+    """Rule ids granted a file-wide exception by unwaffle-ignore-file
     markers anywhere in the file."""
     rules: set[str] = set()
     for c in sf.comments:
@@ -123,7 +123,7 @@ def _suppressions(sf: SourceFile) -> list[tuple[frozenset[str] | None, int, int]
             else None
         )
         start, end = c.start_line, c.end_line
-        if c.content.strip().startswith("uncomment-ignore"):
+        if c.content.strip().startswith("unwaffle-ignore"):
             nxt = sf.comments[i + 1] if i + 1 < len(sf.comments) else None
             if nxt is not None and nxt.start_line == c.end_line + 1:
                 end = nxt.end_line
@@ -144,7 +144,7 @@ def _suppressed(f: Finding, sups) -> bool:
 
 
 def _is_marker(c: Comment) -> bool:
-    return c.content.strip().startswith("uncomment-ignore")
+    return c.content.strip().startswith("unwaffle-ignore")
 
 
 def file_suppressed_rules(sf: SourceFile) -> frozenset[str]:
@@ -164,7 +164,7 @@ def marker_line_count(c: Comment) -> int:
     """Comment lines that are purely a suppression marker: never counted by
     the gate's prose math, so adding a marker cannot create or worsen the
     very finding it addresses."""
-    return sum(1 for ln in c.content.splitlines() if ln.strip().startswith("uncomment-ignore"))
+    return sum(1 for ln in c.content.splitlines() if ln.strip().startswith("unwaffle-ignore"))
 
 
 def visible_comments(sf: SourceFile, cfg: Config) -> list:

@@ -1,7 +1,7 @@
 """Configuration: thresholds, disabled rules, severity overrides.
 
-Loaded from `uncomment.toml` (bare keys or a `[tool.uncomment]` table both
-work) or `[tool.uncomment]` in `pyproject.toml`, searched upward from the
+Loaded from `unwaffle.toml` (bare keys or a `[tool.unwaffle]` table both
+work) or `[tool.unwaffle]` in `pyproject.toml`, searched upward from the
 scanned path. Invalid keys, types, or values are hard errors (exit code 2):
 a silently ignored typo in CI is worse than a failed run.
 """
@@ -180,10 +180,10 @@ def _load_toml(path: Path) -> dict:
 
 
 def _unwrap(data: dict) -> dict:
-    """Accept both bare keys and a [tool.uncomment] table."""
+    """Accept both bare keys and a [tool.unwaffle] table."""
     tool = data.get("tool")
-    if isinstance(tool, dict) and isinstance(tool.get("uncomment"), dict):
-        return tool["uncomment"]
+    if isinstance(tool, dict) and isinstance(tool.get("unwaffle"), dict):
+        return tool["unwaffle"]
     return {k: v for k, v in data.items() if k != "tool"}
 
 
@@ -197,13 +197,13 @@ def load_config(start: str | Path = ".", explicit: str | None = None) -> Config:
     if directory.is_file():
         directory = directory.parent
     for candidate_dir in [directory, *directory.parents]:
-        toml_path = candidate_dir / "uncomment.toml"
+        toml_path = candidate_dir / "unwaffle.toml"
         if toml_path.is_file():
             return _from_table(_unwrap(_load_toml(toml_path)), str(toml_path))
         pyproject = candidate_dir / "pyproject.toml"
         if pyproject.is_file():
             data = _load_toml(pyproject)
-            table = data.get("tool", {}).get("uncomment")
+            table = data.get("tool", {}).get("unwaffle")
             if table is not None:
                 return _from_table(table, str(pyproject))
     return Config()

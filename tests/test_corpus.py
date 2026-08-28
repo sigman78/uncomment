@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from uncomment.config import Config
-from uncomment.extract import extract_file
-from uncomment.languages import EXTENSIONS
-from uncomment.model import Severity
-from uncomment.rules import all_rules, run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_file
+from unwaffle.languages import EXTENSIONS
+from unwaffle.model import Severity
+from unwaffle.rules import all_rules, run_rules
 
 CORPUS = Path(__file__).parent / "corpus"
 

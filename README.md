@@ -1,11 +1,11 @@
-# uncomment
+# unwaffle
 
 Lint and gate the comment noise that coding agents leave behind.
 
 Coding agents tend to over-comment: they narrate their process ("First, we
 validate the input"), describe their edits ("Changed to use memcpy as
 requested"), restate the code ("// return the total"), drop banners and label
-comments, and leave commented-out code. `uncomment` detects this with
+comments, and leave commented-out code. `unwaffle` detects this with
 tree-sitter parsing, judges only what an edit *added* (gate mode), and emits
 feedback a coding harness can feed straight back to the agent as a corrective
 prompt. What it never touches: real API documentation, WHY-comments, license
@@ -19,25 +19,22 @@ Python** (docstrings included), **Java, C#, Kotlin, Swift**.
 Requires Python ≥ 3.13 and [uv](https://docs.astral.sh/uv/):
 
 ```console
-uvx --from git+https://github.com/sigman78/uncomment uncomment check .
-uv run uncomment check src/                      # scan everything
-uv run uncomment gate src/ --baseline git:HEAD   # judge only new comments
-git diff | uv run uncomment gate --diff -        # judge only what a diff added
-uv run uncomment verify                          # prove working-tree changes are comment-only
-uv run uncomment rules                           # list rules
+uvx unwaffle check .                            # one-shot, from PyPI
+uv run unwaffle check src/                      # scan everything
+uv run unwaffle gate src/ --baseline git:HEAD   # judge only new comments
+git diff | uv run unwaffle gate --diff -        # judge only what a diff added
+uv run unwaffle verify                          # prove working-tree changes are comment-only
+uv run unwaffle rules                           # list rules
 ```
-
-Note: plain `uvx uncomment` installs an unrelated PyPI package of the same
-name — use the `--from git+` form above until this tool is published.
 
 Exit codes: `0` clean, `1` gated findings, `2` bad input — always loud, never
 a silently green gate. **`check`** scans every comment; **`gate`** compares
 against a baseline (directory, `git:REF`, or a unified diff) and judges only
 comments that are genuinely new — moves, typo fixes, and renames are never
 re-judged. Scans respect `.gitignore` and skip generated files by default,
-with `include`/`exclude` globs for the rest, so `uncomment check .` behaves
-on real trees. Configuration lives in `uncomment.toml` or `pyproject.toml`
-(`[tool.uncomment]`), discovered upward from the scanned path.
+with `include`/`exclude` globs for the rest, so `unwaffle check .` behaves
+on real trees. Configuration lives in `unwaffle.toml` or `pyproject.toml`
+(`[tool.unwaffle]`), discovered upward from the scanned path.
 
 ## Integration
 
@@ -45,7 +42,7 @@ Run the gate after the agent edits; on exit `1`, hand the `--format agent`
 output back to the agent as its next instruction and re-run:
 
 ```console
-uncomment gate . --baseline git:origin/main --format agent > comment-feedback.md
+unwaffle gate . --baseline git:origin/main --format agent > comment-feedback.md
 ```
 
 Also available: `--format json` (stable machine schema), `--format sarif`
@@ -69,7 +66,7 @@ hook recipe — see [integrations](docs/integrations.md).
 
 ```console
 uv run pytest
-uv run uncomment check src/ tests/test_*.py   # dogfood: CI enforces this
+uv run unwaffle check src/ tests/test_*.py   # dogfood: CI enforces this
 ```
 
 The test base is corpus-driven: noisy files carry sidecars with the exact

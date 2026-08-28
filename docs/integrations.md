@@ -9,7 +9,7 @@ baseline ref, a stale diff, and any invalid config key/type/value all exit
 Explicitly named files in unsupported languages are counted in
 `files_skipped` and noted on stderr. `--fail-on info|warn|error|never` sets
 the lowest severity that causes exit `1` (default: `warn`).
-`uncomment --version` prints the version.
+`unwaffle --version` prints the version.
 
 Output is UTF-8 regardless of console codepage; pass `--ascii` (or set
 `unicode-output = false`) to transliterate the tool's typography to plain
@@ -34,7 +34,7 @@ ASCII for legacy terminals and log processors.
   annotators: rule metadata with default levels, per-finding regions and
   snippets, error/warn/info mapped to error/warning/note.
 
-`uncomment rules --format json` emits the machine-readable rule table for
+`unwaffle rules --format json` emits the machine-readable rule table for
 harnesses that map findings to annotations.
 
 ## The harness contract
@@ -48,8 +48,8 @@ open on it; a stricter setup should fail closed.
 ## CI
 
 ```console
-uncomment gate --baseline git:origin/main --format agent > comment-feedback.md
-git diff origin/main...HEAD | uncomment gate --diff - --format sarif > uncomment.sarif
+unwaffle gate --baseline git:origin/main --format agent > comment-feedback.md
+git diff origin/main...HEAD | unwaffle gate --diff - --format sarif > unwaffle.sarif
 ```
 
 To surface SARIF findings as GitHub code-scanning annotations:
@@ -58,12 +58,12 @@ To surface SARIF findings as GitHub code-scanning annotations:
       - name: Comment gate
         run: |
           git fetch origin main
-          git diff origin/main...HEAD | uv run uncomment gate --diff - \
-            --fail-on never --format sarif > uncomment.sarif
+          git diff origin/main...HEAD | uv run unwaffle gate --diff - \
+            --fail-on never --format sarif > unwaffle.sarif
 
       - uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: uncomment.sarif
+          sarif_file: unwaffle.sarif
 ```
 
 (`--fail-on never` when annotations alone should not fail the build; drop it
@@ -73,7 +73,7 @@ to gate.)
 
 The field-proven setup uses three pieces:
 
-**1. A repo-root `uncomment.toml`** holding the project's thresholds,
+**1. A repo-root `unwaffle.toml`** holding the project's thresholds,
 `approved-terms`, and any disabled rules, so every entry point (hook, CI,
 manual runs) judges identically.
 
@@ -88,7 +88,7 @@ corrective prompt back to the agent (exit 2 shows stderr to the agent):
       "matcher": "Edit|Write",
       "hooks": [{
         "type": "command",
-        "command": "sh -c 'f=$(jq -r .tool_input.file_path); uv run uncomment gate \"$f\" --baseline git:HEAD --format agent 1>&2; [ $? -eq 1 ] && exit 2 || exit 0'"
+        "command": "sh -c 'f=$(jq -r .tool_input.file_path); uv run unwaffle gate \"$f\" --baseline git:HEAD --format agent 1>&2; [ $? -eq 1 ] && exit 2 || exit 0'"
       }]
     }]
   }
@@ -115,7 +115,7 @@ mid-tier model handles them reliably (field-proven: a full-tree sweep of 726
 findings ran to zero with no code damage). Two pieces make the loop safe
 and cheap:
 
-**The verifier.** `uncomment verify` proves working-tree changes touch
+**The verifier.** `unwaffle verify` proves working-tree changes touch
 *nothing but comments*: it runs `git diff` itself (against `git:HEAD` by
 default, or `--baseline git:REF` — pass a `git stash create` snapshot to
 scope the proof to a fixer's own edits amid other uncommitted work;
@@ -136,25 +136,25 @@ enforces Edit-only).
 ```markdown
 ---
 name: comment-fixer
-description: Fixes comment-lint findings from uncomment. Use when the comment gate reports findings.
+description: Fixes comment-lint findings from unwaffle. Use when the comment gate reports findings.
 tools: Read, Edit, Bash
 model: sonnet
 ---
 
 You fix comment-lint findings and nothing else.
 
-Procedure (uncomment = `uvx --from git+https://github.com/sigman78/uncomment uncomment`):
+Procedure (unwaffle = `uvx unwaffle` if not installed in the project):
 1. Snapshot the tree before touching anything, so step 4 can prove YOUR
    edits are comment-only even amid other uncommitted work:
    `SNAP=$(git stash create); SNAP=${SNAP:-HEAD}`
-2. Run `uncomment gate --baseline git:HEAD --format agent` (no paths —
-   the tool asks git for the changed files, scoped by uncomment.toml).
+2. Run `unwaffle gate --baseline git:HEAD --format agent` (no paths —
+   the tool asks git for the changed files, scoped by unwaffle.toml).
    Apply every MUST FIX item exactly as its action says. Delete only
    comments; never change code, strings, or tooling directives
    (eslint/noqa/MARK and similar control comments). Consider items are
    optional; apply them when the fix is obvious.
 3. Re-run the gate until it exits 0.
-4. Prove you touched only comments: `uncomment verify --baseline git:$SNAP`
+4. Prove you touched only comments: `unwaffle verify --baseline git:$SNAP`
    If verify fails, revert your non-comment change and fix again.
 5. Report one line: files touched, findings fixed, verify result.
 ```
@@ -169,7 +169,7 @@ main agent's context at all:
       "matcher": "Edit|Write",
       "hooks": [{
         "type": "command",
-        "command": "sh -c 'f=$(jq -r .tool_input.file_path); uv run uncomment gate \"$f\" --baseline git:HEAD --format text >/dev/null 2>&1; [ $? -eq 1 ] && { echo \"Comment findings in $f - delegate to the comment-fixer subagent, then re-read the file before further edits.\" 1>&2; exit 2; } || exit 0'"
+        "command": "sh -c 'f=$(jq -r .tool_input.file_path); uv run unwaffle gate \"$f\" --baseline git:HEAD --format text >/dev/null 2>&1; [ $? -eq 1 ] && { echo \"Comment findings in $f - delegate to the comment-fixer subagent, then re-read the file before further edits.\" 1>&2; exit 2; } || exit 0'"
       }]
     }]
   }
@@ -181,10 +181,10 @@ delegating, the hook itself runs a pinned-model headless session and
 verifies, so the main agent never sees the noise at all:
 
 ```sh
-uncomment gate "$f" --baseline git:HEAD --format agent > /tmp/report.md || {
+unwaffle gate "$f" --baseline git:HEAD --format agent > /tmp/report.md || {
   claude -p --model sonnet --allowedTools "Read,Edit" \
     "$(cat /tmp/report.md) Fix only these comments in $f; touch nothing else."
-  uncomment verify || git checkout -- "$f"
+  unwaffle verify || git checkout -- "$f"
   echo "comments auto-fixed in $f - re-read it before further edits" 1>&2
   exit 2
 }
@@ -201,6 +201,6 @@ diff, invokes the fixer, verifies, and only then lets the turn or commit
 complete. Amortizes cost and latency; no mid-edit staleness because the
 main agent is idle when it runs.
 
-If the tool is not installed in the project, `uvx --from
-git+https://github.com/sigman78/uncomment uncomment …` works in both the
-hook and CI (about 0.6 s warm start).
+If the tool is not installed in the project, `uvx unwaffle …` works in both
+the hook and CI (about 0.6 s warm start); pin a version (`uvx
+unwaffle==0.15.0`) where gate stability matters.

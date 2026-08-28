@@ -362,7 +362,7 @@ def _directive_line(text: str, spec: LangSpec) -> bool:
 
 
 def _marker_line(text: str, spec: LangSpec) -> bool:
-    return strip_markers(text.splitlines()[0], spec.line_marker).startswith("uncomment-ignore")
+    return strip_markers(text.splitlines()[0], spec.line_marker).startswith("unwaffle-ignore")
 
 
 def _doc_class(text: str, spec: LangSpec) -> str:

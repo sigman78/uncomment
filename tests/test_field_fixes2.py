@@ -3,12 +3,12 @@ effective-severity labels, net-growth amplification, legend-class UC005."""
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.gate import gate_file
-from uncomment.languages import C, spec_for_path
-from uncomment.report import render_agent
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.gate import gate_file
+from unwaffle.languages import C, spec_for_path
+from unwaffle.report import render_agent
+from unwaffle.rules import run_rules
 
 PY = spec_for_path("x.py")
 

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source, strip_docstring_quotes, strip_markers
-from uncomment.gate import gate_file
-from uncomment.languages import is_interface_file, spec_for_path
-from uncomment.model import Attachment, Kind
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source, strip_docstring_quotes, strip_markers
+from unwaffle.gate import gate_file
+from unwaffle.languages import is_interface_file, spec_for_path
+from unwaffle.model import Attachment, Kind
+from unwaffle.rules import run_rules
 
 PY = spec_for_path("x.py")
 
@@ -110,7 +110,7 @@ def test_gate_python(tmp_path):
 
 def test_suppression_marker_in_python():
     src = (
-        "# uncomment-ignore[UC005]: kept as a worked example\n"
+        "# unwaffle-ignore[UC005]: kept as a worked example\n"
         "# x = compute()\n"
         "y = 1\n"
     )

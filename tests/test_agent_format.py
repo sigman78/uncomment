@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from uncomment.cli import main
-from uncomment.config import Config, load_config
-from uncomment.extract import extract_source
-from uncomment.languages import JS
-from uncomment.model import ToolError
-from uncomment.report import render_agent
-from uncomment.rules import run_rules
+from unwaffle.cli import main
+from unwaffle.config import Config, load_config
+from unwaffle.extract import extract_source
+from unwaffle.languages import JS
+from unwaffle.model import ToolError
+from unwaffle.report import render_agent
+from unwaffle.rules import run_rules
 
 
 def _agent(src: str, cfg: Config | None = None) -> str:
@@ -60,7 +60,7 @@ def test_house_policy_lines_are_injected():
 
 def test_house_policy_from_toml(tmp_path, capsys):
     (tmp_path / "a.js").write_text("// then we check the input\nconst a = 1;\n", encoding="utf-8")
-    (tmp_path / "uncomment.toml").write_text(
+    (tmp_path / "unwaffle.toml").write_text(
         'agent-policy = ["House rule: comments are English-only."]\n', encoding="utf-8"
     )
     main(["check", str(tmp_path / "a.js"), "--fail-on", "never", "--format", "agent"])
@@ -68,6 +68,6 @@ def test_house_policy_from_toml(tmp_path, capsys):
 
 
 def test_empty_policy_line_is_a_config_error(tmp_path):
-    (tmp_path / "uncomment.toml").write_text('agent-policy = [" "]\n', encoding="utf-8")
+    (tmp_path / "unwaffle.toml").write_text('agent-policy = [" "]\n', encoding="utf-8")
     with pytest.raises(ToolError, match="agent-policy: empty line"):
         load_config(tmp_path)

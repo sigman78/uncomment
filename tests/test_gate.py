@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from uncomment.config import Config
-from uncomment.gate import gate_file, gate_paths
+from unwaffle.config import Config
+from unwaffle.gate import gate_file, gate_paths
 
 OLD = """\
 // Debounce keeps the request count low.
@@ -169,7 +169,7 @@ def test_git_baseline_multi_file_rename(tmp_path):
 def test_pathless_gate_uses_git_change_list(tmp_path, monkeypatch, capsys):
     import json
 
-    from uncomment.cli import main
+    from unwaffle.cli import main
 
     repo = _git_repo(tmp_path)
     (repo / "touched.js").write_text(OLD, encoding="utf-8")
@@ -196,7 +196,7 @@ def test_pathless_gate_uses_git_change_list(tmp_path, monkeypatch, capsys):
 
 
 def test_pathless_gate_outside_repo_is_loud(tmp_path, monkeypatch, capsys):
-    from uncomment.cli import main
+    from unwaffle.cli import main
 
     monkeypatch.chdir(tmp_path)
     assert main(["gate", "--baseline", "git:HEAD"]) == 2
@@ -205,7 +205,7 @@ def test_pathless_gate_outside_repo_is_loud(tmp_path, monkeypatch, capsys):
 
 
 def test_pathless_gate_needs_git_baseline(tmp_path, monkeypatch, capsys):
-    from uncomment.cli import main
+    from unwaffle.cli import main
 
     monkeypatch.chdir(tmp_path)
     (tmp_path / "base").mkdir()

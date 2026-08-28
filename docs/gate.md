@@ -6,7 +6,7 @@ feed straight back to the agent (see
 [output formats](integrations.md#output-formats)).
 
 ```console
-uncomment gate src/parser.c --baseline git:main --format agent
+unwaffle gate src/parser.c --baseline git:main --format agent
 ```
 
 ## Baselines
@@ -65,7 +65,7 @@ touched are gated, so it drops straight into any harness that has the edit as
 a diff:
 
 ```console
-git diff | uncomment gate --diff - --format agent
+git diff | unwaffle gate --diff - --format agent
 ```
 
 Both git diffs (renames, new/deleted files, binary markers,

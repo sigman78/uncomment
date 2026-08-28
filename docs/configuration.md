@@ -1,13 +1,13 @@
 # Configuration
 
-`uncomment.toml` (bare keys or a `[tool.uncomment]` table — both work) or
-`[tool.uncomment]` in `pyproject.toml`, discovered upward from the scanned
+`unwaffle.toml` (bare keys or a `[tool.unwaffle]` table — both work) or
+`[tool.unwaffle]` in `pyproject.toml`, discovered upward from the scanned
 path; `--config FILE` uses exactly that file instead. Unknown keys, wrong
 types, and invalid values are errors (exit `2`), not silent no-ops — a typo
 can never produce a silently green gate.
 
 ```toml
-[tool.uncomment]
+[tool.unwaffle]
 restate-overlap = 0.6              # UC001 word-overlap threshold
 redundant-doc-overlap = 0.75       # UC007 threshold
 code-line-fraction = 0.5           # UC005: fraction of code-looking lines
@@ -37,7 +37,7 @@ agent-policy = [                   # house rules appended to the agent-format pr
   "Long design prose goes to docs/architecture.md.",
 ]
 
-[tool.uncomment.severity]          # promote/demote rules
+[tool.unwaffle.severity]          # promote/demote rules
 STE03 = "warn"
 UC004 = "info"
 ```
@@ -75,7 +75,7 @@ generated"). Directories carrying a signed `CACHEDIR.TAG` (the
 cargo, uv, pip, and pytest write into the caches they create) are always
 pruned — the signature is verified, so an ordinary file named CACHEDIR.TAG
 never hides a tree, and scanning a tagged directory as the root still works.
-Together these make `uncomment check .` behave sensibly out of the box on
+Together these make `unwaffle check .` behave sensibly out of the box on
 real trees full of build output and codegen.
 
 ## disable and severity
@@ -112,7 +112,7 @@ whole-word boundaries, so "leverage" never masks inside "leverages".
 Approved terms still count for the restatement rules (UC001/UC007) —
 approving a word never excuses a comment that repeats the code. For
 disagreements about a specific site rather than a word, use
-[`uncomment-ignore` markers](rules.md#disagree-with-a-finding) instead.
+[`unwaffle-ignore` markers](rules.md#disagree-with-a-finding) instead.
 
 ## agent-policy
 

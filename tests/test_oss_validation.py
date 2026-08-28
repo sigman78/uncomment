@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.languages import C, JAVA, SWIFT, spec_for_path
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.languages import C, JAVA, SWIFT, spec_for_path
+from unwaffle.rules import run_rules
 
 
 def _fired(path: str, src: str, spec, cfg: Config | None = None):

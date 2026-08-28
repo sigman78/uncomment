@@ -1,16 +1,16 @@
-"""uncomment-ignore-file[RULE]: file-wide exceptions for rule-shaped house
+"""unwaffle-ignore-file[RULE]: file-wide exceptions for rule-shaped house
 patterns (spec transcriptions), plus the UC102 self-grant notice."""
 
 from __future__ import annotations
 
 import json
 
-from uncomment.cli import main
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.gate import gate_file
-from uncomment.languages import JAVA
-from uncomment.rules import run_rules
+from unwaffle.cli import main
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.gate import gate_file
+from unwaffle.languages import JAVA
+from unwaffle.rules import run_rules
 
 SPEC_STEPS = (
     "class TreeBuilder {\n"
@@ -31,13 +31,13 @@ def _rules_fired(src: str):
 
 
 def test_file_marker_suppresses_rule_file_wide():
-    marked = "// uncomment-ignore-file[UC002]: transcribes the WHATWG tree-builder steps\n" + SPEC_STEPS
+    marked = "// unwaffle-ignore-file[UC002]: transcribes the WHATWG tree-builder steps\n" + SPEC_STEPS
     assert "UC002" in _rules_fired(SPEC_STEPS)
     assert "UC002" not in _rules_fired(marked)
 
 
 def test_file_marker_takes_multiple_rules():
-    src = ("// uncomment-ignore-file[UC002,UC005]: fixture transcription\n"
+    src = ("// unwaffle-ignore-file[UC002,UC005]: fixture transcription\n"
            "// then we run the fixture step\n"
            "// int dead = code();\n"
            "int x;\n")
@@ -46,14 +46,14 @@ def test_file_marker_takes_multiple_rules():
 
 
 def test_other_rules_stay_armed():
-    marked = ("// uncomment-ignore-file[UC002]: spec transcription\n"
+    marked = ("// unwaffle-ignore-file[UC002]: spec transcription\n"
               + SPEC_STEPS.replace("        return b;", "        int c = b;\n        // int dead = old(t);\n        return c;"))
     assert "UC005" in _rules_fired(marked)
 
 
 def test_file_form_is_not_a_bare_span_marker():
     # a misparse as bare marker would silence the comment directly below
-    src = ("// uncomment-ignore-file[UC009]: long trailing allowed here\n"
+    src = ("// unwaffle-ignore-file[UC009]: long trailing allowed here\n"
            "// Changed the loop to use sum() as requested\n"
            "int x;\n")
     assert "UC003" in _rules_fired(src)
@@ -61,7 +61,7 @@ def test_file_form_is_not_a_bare_span_marker():
 
 def test_span_marker_does_not_grant_file_wide():
     src = ("class C {\n"
-           "    // first we check the fixture uncomment-ignore[UC002]: reviewed\n"
+           "    // first we check the fixture unwaffle-ignore[UC002]: reviewed\n"
            "    int a;\n"
            "    // then we replace entry with the new entry\n"
            "    int b;\n"
@@ -83,14 +83,14 @@ def _gate(tmp_path, old_text, new_text):
 def test_file_marker_reaches_gate_signals(tmp_path):
     flood = "".join(f"// then we run filler step number {i} of the plan\n" for i in range(14))
     old = "int existing;\n"
-    marked = "// uncomment-ignore-file[UC100,UC002]: generated protocol fixture\n" + flood + old
+    marked = "// unwaffle-ignore-file[UC100,UC002]: generated protocol fixture\n" + flood + old
     assert any(f.rule == "UC100" for f in _gate(tmp_path, old, flood + old))
     assert not any(f.rule == "UC100" for f in _gate(tmp_path, old, marked))
 
 
 def test_new_grant_raises_uc102_notice(tmp_path):
     old = SPEC_STEPS
-    marked = "// uncomment-ignore-file[UC002]: transcribes the WHATWG steps\n" + SPEC_STEPS
+    marked = "// unwaffle-ignore-file[UC002]: transcribes the WHATWG steps\n" + SPEC_STEPS
     notices = [f for f in _gate(tmp_path, old, marked) if f.rule == "UC102"]
     assert len(notices) == 1
     assert "UC002" in notices[0].message
@@ -98,7 +98,7 @@ def test_new_grant_raises_uc102_notice(tmp_path):
 
 
 def test_preexisting_grant_is_silent(tmp_path):
-    marked = "// uncomment-ignore-file[UC002]: transcribes the WHATWG steps\n" + SPEC_STEPS
+    marked = "// unwaffle-ignore-file[UC002]: transcribes the WHATWG steps\n" + SPEC_STEPS
     assert not any(f.rule == "UC102" for f in _gate(tmp_path, marked, marked))
 
 

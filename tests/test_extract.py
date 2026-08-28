@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from uncomment.extract import extract_source, strip_markers
-from uncomment.languages import C, GO, JS, RUST, TS
-from uncomment.model import Attachment, Kind
+from unwaffle.extract import extract_source, strip_markers
+from unwaffle.languages import C, GO, JS, RUST, TS
+from unwaffle.model import Attachment, Kind
 
 
 def _one(sf, index=0):

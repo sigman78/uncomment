@@ -1,4 +1,4 @@
-"""`uncomment verify --diff`: prove a diff touches comments only — the
+"""`unwaffle verify --diff`: prove a diff touches comments only — the
 safety bound for autonomous comment-fixer loops."""
 
 from __future__ import annotations
@@ -8,8 +8,8 @@ import io
 import sys
 from pathlib import Path
 
-from uncomment.cli import main
-from uncomment.gate import verify_comments_only
+from unwaffle.cli import main
+from unwaffle.gate import verify_comments_only
 
 
 def _udiff(old: str, new: str, name: str) -> str:

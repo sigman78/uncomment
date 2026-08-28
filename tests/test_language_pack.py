@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.filtering import is_generated
-from uncomment.languages import CSHARP, JAVA, KOTLIN, SWIFT
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.filtering import is_generated
+from unwaffle.languages import CSHARP, JAVA, KOTLIN, SWIFT
+from unwaffle.rules import run_rules
 
 
 def _findings(path: str, src: str, spec):
@@ -71,7 +71,7 @@ def test_csharp_xml_docs_are_doc_comments():
         "/// <param name=\"code\">raw scan code</param>\n"
         "int Map(int code) { return code; }\n"
     )
-    from uncomment.model import Kind
+    from unwaffle.model import Kind
 
     sf = extract_source("t.cs", src, CSHARP)
     assert sf.comments and sf.comments[0].kind is Kind.DOC

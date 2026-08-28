@@ -91,7 +91,7 @@ Severity WARN, matching UC005 — same disease, different marker.
 `#[cfg(any())]` line, `#else` line for a dead else-branch);
 `end_line` = last line of the construct (`#endif`, closing brace, end of the
 attributed item). The full span makes suppression ergonomic: a standalone
-`uncomment-ignore[UC013]: reason` comment on the line above covers the
+`unwaffle-ignore[UC013]: reason` comment on the line above covers the
 anchor, and the existing overlap check in `_suppressed` does the rest —
 no suppression changes needed.
 
@@ -166,7 +166,7 @@ def disabled_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         ...  # empty-body skip; bare-string code-ish test; yield Finding
 ```
 
-No new config keys: `disable`/severity overrides and both `uncomment-ignore`
+No new config keys: `disable`/severity overrides and both `unwaffle-ignore`
 marker forms apply through the existing machinery.
 
 ## Gate integration (`gate.py`)
@@ -346,7 +346,7 @@ fun probeDisabled(v: Int): Int {
 - Edit introduces an `#if 0` block → UC013 present in gate findings.
 - Edit wraps N existing code lines in `#if 0` → `added_code_lines` does not
   grow by N (metric-correction proof).
-- `uncomment-ignore[UC013]` on the line above the region suppresses it.
+- `unwaffle-ignore[UC013]` on the line above the region suppresses it.
 
 ## Out of scope, explicitly
 

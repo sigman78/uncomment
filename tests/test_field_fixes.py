@@ -8,13 +8,13 @@ import io
 import sys
 from pathlib import Path
 
-from uncomment.cli import main
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.gate import gate_file
-from uncomment.languages import C, JS, spec_for_path
-from uncomment.rules import run_rules
-from uncomment.textutil import sentences
+from unwaffle.cli import main
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.gate import gate_file
+from unwaffle.languages import C, JS, spec_for_path
+from unwaffle.rules import run_rules
+from unwaffle.textutil import sentences
 
 
 def _fired(path: str, src: str, spec, cfg: Config | None = None):

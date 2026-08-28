@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from uncomment.cli import discover_files, main
-from uncomment.config import Config, load_config
-from uncomment.filtering import is_generated, matches_any, selected
-from uncomment.gate import gate_diff
-from uncomment.model import ToolError
+from unwaffle.cli import discover_files, main
+from unwaffle.config import Config, load_config
+from unwaffle.filtering import is_generated, matches_any, selected
+from unwaffle.gate import gate_diff
+from unwaffle.model import ToolError
 
 NOISY = "// Updated the constant as requested\nconst a = 1;\n"
 
@@ -165,6 +165,6 @@ def test_cli_exclude_flag(tmp_path, capsys, monkeypatch):
 
 
 def test_empty_pattern_is_a_config_error(tmp_path):
-    (tmp_path / "uncomment.toml").write_text('exclude = ["ok", "//"]\n', encoding="utf-8")
+    (tmp_path / "unwaffle.toml").write_text('exclude = ["ok", "//"]\n', encoding="utf-8")
     with pytest.raises(ToolError, match="empty pattern"):
         load_config(tmp_path)

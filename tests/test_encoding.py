@@ -4,11 +4,11 @@ classification."""
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_file, extract_source
-from uncomment.languages import C, JS
-from uncomment.model import Attachment
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_file, extract_source
+from unwaffle.languages import C, JS
+from unwaffle.model import Attachment
+from unwaffle.rules import run_rules
 
 
 def test_bom_file_keeps_license_exemption(tmp_path):

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from uncomment.config import Config
-from uncomment.extract import extract_source
-from uncomment.languages import C, GO, JS, RUST, TS
-from uncomment.rules import run_rules
+from unwaffle.config import Config
+from unwaffle.extract import extract_source
+from unwaffle.languages import C, GO, JS, RUST, TS
+from unwaffle.rules import run_rules
 
 
 def _rules_fired(path, src, spec, cfg=None):
@@ -106,7 +106,7 @@ def test_config_extra_directive_patterns():
 
 
 def test_directives_do_not_count_in_gate(tmp_path):
-    from uncomment.gate import gate_file
+    from unwaffle.gate import gate_file
 
     old_dir = tmp_path / "old"
     new_dir = tmp_path / "new"

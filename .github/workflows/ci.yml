@@ -29,4 +29,4 @@ jobs:
       # deliberate noise and stay out of the scan)
       - name: Self-lint
         shell: bash
-        run: uv run uncomment check src/ tests/test_*.py
+        run: uv run unwaffle check src/ tests/test_*.py

@@ -20,13 +20,13 @@ and `error` gate (see [`--fail-on`](integrations.md#exit-codes) and the
 | UC012 | warn | emoji/decorative symbols in comments; with `ascii-comments = true`, any non-ASCII character |
 | UC100 | error | (gate only) comment flood: edit adds far more *noisy* comment lines than code |
 | UC101 | warn | (gate only) comment amplification: edit multiplies a file's prose comments |
-| UC102 | info | (gate only) self-granted exception: edit adds a file-wide `uncomment-ignore-file` marker |
+| UC102 | info | (gate only) self-granted exception: edit adds a file-wide `unwaffle-ignore-file` marker |
 | STE01 | info | sentence over 20 words (ASD-STE100 style) |
 | STE02 | info | passive voice |
 | STE03 | info | non-simple wording ("utilize" → use, "in order to" → to, …) |
 | STE04 | info | paragraph over 6 sentences |
 
-`uncomment rules --format json` emits this table (including the gate-only
+`unwaffle rules --format json` emits this table (including the gate-only
 UC100/UC101) for harnesses that map findings to annotations. The gate-only
 signals are described in [gate mode](gate.md#gate-only-signals).
 
@@ -99,14 +99,14 @@ directive, and pseudo-forms like `NOLINT: <prose>` or `coverage: ignore --
 Suppress it in place, auditable and scoped:
 
 ```c
-int x = parse();  // retried upstream, so failure here is fine uncomment-ignore[UC009]: reviewed
+int x = parse();  // retried upstream, so failure here is fine unwaffle-ignore[UC009]: reviewed
 
-// uncomment-ignore[UC005]: kept as a worked example for the FFI docs
+// unwaffle-ignore[UC005]: kept as a worked example for the FFI docs
 // int old = compute();
 // use(old);
 ```
 
-`uncomment-ignore[RULE,RULE]: reason` inside a comment suppresses those rules
+`unwaffle-ignore[RULE,RULE]: reason` inside a comment suppresses those rules
 for it; a standalone marker comment covers the comment or line directly below.
 Without a rule list it suppresses everything in its target. Markers are never
 judged and never counted by the gate — marker lines do not count toward the
@@ -119,12 +119,12 @@ exactly like narration, and sprinkling thirty span markers through it would
 be its own noise. For that there is the file form:
 
 ```java
-// uncomment-ignore-file[UC002]: implements the WHATWG tree-builder algorithm
+// unwaffle-ignore-file[UC002]: implements the WHATWG tree-builder algorithm
 ```
 
 It suppresses the listed rules for this file only; the rule list is
 mandatory (no marker form turns everything off file-wide), the reason lives
-next to the code it excuses, and `grep uncomment-ignore-file` enumerates
+next to the code it excuses, and `grep unwaffle-ignore-file` enumerates
 every exception a repo has granted itself. The escape hatch stays honest in
 gate mode: an edit that *adds* a file-wide marker gets an info-tier `UC102`
 notice ("edit grants this file a file-wide exception"), so a self-granted
@@ -132,7 +132,7 @@ exception is announced to the reviewer rather than slipping through.
 
 The file-level gate signals (`UC100` flood, `UC101` amplification) also
 honor rule-listed span markers wherever they sit — they have no single span
-to anchor to, so an explicit `uncomment-ignore[UC100]` anywhere in the file
+to anchor to, so an explicit `unwaffle-ignore[UC100]` anywhere in the file
 clears that file's signal. A bare marker never reaches file level.
 
 When the disagreement is about a word rather than a site — a product name or
