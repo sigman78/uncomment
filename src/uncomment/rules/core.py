@@ -120,11 +120,17 @@ def narration(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 #    descriptions ("Removed from the queue", "Moved to the free list") and
 #    adjective uses ("Fixed-point", "Fixed size buffer").
 _CHANGE_START_RE = re.compile(
-    r"^(?:added|updated|changed|modified|fixed|removed|renamed|refactored|replaced|moved"
+    r"^(?:added|updated|changed|modified|removed|renamed|refactored|replaced|moved"
     r"|migrated|improved|enhanced|optimized|rewrote|corrected|simplified|reworked|adjusted"
     r"|introduced|dropped|cleaned(?:\s+up)?)\b"
     r"(?![\s-]+(?:from|by|in|on|at|out|off|up|when|while|after|before|during|once|if|unless"
     r"|point|size|width|length|number|amount|rate|capacity|cost|header|timestamp|to\s+(?:the|a|an))\b)"
+    # "fixed" doubles as a participial adjective ("Fixed input x output
+    # grid"), so its branch spares a wider set of premodified nouns
+    r"|^fixed\b(?![\s-]+(?:from|by|in|on|at|when|while|after|before|point|size|width|length"
+    r"|number|amount|rate|capacity|cost|header|timestamp|input|output|order|grid|layout|shape"
+    r"|stride|scale|step|precision|format|frequency|interval|buffer|window|depth|budget"
+    r"|list|array|table|set|to\s+(?:the|a|an))\b)"
     # transition verbs are edit narration regardless of preposition
     r"|^(?:switched|reverted|ported)\b"
     r"|^(?:now|this now)\s+(?:uses|calls|returns|relies|handles|supports|avoids|reads|writes|skips)\b"
@@ -134,7 +140,11 @@ _CHANGE_START_RE = re.compile(
 _CHANGE_INNER_RE = re.compile(
     r"\b(as requested|as discussed|as per (the )?(instructions?|request)"
     r"|per (the )?(user|reviewer|review|feedback)|in response to (the )?(review|feedback|request)"
-    r"|this (change|edit|update|commit|patch)|the (old|previous|original) (implementation|version|code|logic)"
+    # "the old code" is often runtime data (an IR code, a status code): the
+    # bare-noun form keeps only the unambiguous nouns, code/logic demand an
+    # edit verb alongside
+    r"|this (change|edit|update|commit|patch)|the (old|previous|original) (implementation|version)"
+    r"|(?:replace[sd]?|supersede[sd]?|rewrites?|rewrote|rewritten) the (old|previous|original) (code|logic)"
     # "no longer needed/necessary" is ownership/lifetime prose ("free the map
     # when it's no longer needed") — only behavioral change forms count
     r"|no longer (uses|calls|requires|relies)"
@@ -242,7 +252,7 @@ _STRONG_CODEISH_RES = [
     # immediate paren, a plain assignment, or a python-style trailing colon.
     # "if already a valid escape, pass; otherwise, escape" is English
     re.compile(
-        r"^\s*(if|elif|for|while|switch|return|import|export|let|const|var|fn|func|def|pub|static"
+        r"^\s*(if|elif|for|while|switch|return|import|export|let|const|var|val|fn|func|def|pub|static"
         r"|struct|class|case|else|try|catch|except|finally|with|raise|yield|assert)\b"
         r"(.*[{(]|.*(?<![!<>=])=(?!=)|.*:\s*$)"
     ),
@@ -250,7 +260,10 @@ _STRONG_CODEISH_RES = [
     # calls, incl. chained; the paren must follow the callee DIRECTLY, so a
     # range label like "Cyrillic (basic Russian + extensions)" stays prose
     re.compile(r"^\s*[\w.\[\]:>*&-]+\(.*\)\s*;?\s*$"),
-    re.compile(r"=\s*[\w.\[\]]+\("),  # assignment whose right side is a call
+    # a whole-statement assignment-to-call ("x = compute()"); anchoring spares
+    # math/wire glosses like "qp = round(1.5*512) = 768, little-endian" and
+    # "source=HOST(1), size=0"
+    re.compile(r"^\s*[\w.\[\]]+\s*:?=\s*[\w.\[\]]+\(.*\)\s*;?\s*$"),
     # attached arrows are member access (p->next); a SPACED arrow is mapping
     # prose ("HID events -> ui_key_t") and must not read as code on its own
     re.compile(r"\w->\w|\)\s*{"),
@@ -267,8 +280,14 @@ _STRONG_CODEISH_RES = [
 # "None = never written (a bug)", "r=0xF8 -> bits[15:11]=11111"), so on its
 # own it only counts inside a multi-line block
 _WEAK_CODEISH_RES = [
-    re.compile(r"^\s*[\w.\[\]]+\s*[-+*/|&^:]?=\s*[^=]"),
+    # LHS must be an identifier: "0 = unified (...)" is an enum-encoding
+    # gloss, code never assigns to a literal
+    re.compile(r"^\s*[A-Za-z_][\w.\[\]]*\s*[-+*/|&^:]?=\s*[^=]"),
 ]
+
+# "{current pipeline Hz, selected I2S input Hz}" — a brace-wrapped tuple
+# gloss with no statement innards is wire-layout prose, not a block
+_BRACE_GLOSS_RE = re.compile(r"\{[^;{}=]*\}")
 
 _CODEISH_RES = _STRONG_CODEISH_RES + _WEAK_CODEISH_RES
 
@@ -281,7 +300,7 @@ _PROSE_ASSIGN_RE = re.compile(r"^\s*\w+\s*=\s*[A-Za-z]+(\s+[A-Za-z]+){2,}\s*[.;]
 def _looks_like_code(line: str, strong_only: bool = False) -> bool:
     if not line.strip():
         return False
-    if _PROSE_ASSIGN_RE.match(line):
+    if _PROSE_ASSIGN_RE.match(line) or _BRACE_GLOSS_RE.fullmatch(line.strip()):
         return False
     patterns = _STRONG_CODEISH_RES if strong_only else _CODEISH_RES
     return any(rx.search(line) for rx in patterns)

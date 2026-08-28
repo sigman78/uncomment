@@ -26,7 +26,7 @@ SKIP_DIRS = frozenset(
 )
 
 
-def discover_files(paths: list[Path], cfg=None) -> list[Path]:
+def discover_files(paths: list[Path], cfg=None, unsupported=None) -> list[Path]:
     """Supported source files under the given paths. Skip-dirs apply only to
     directories *below* a scanned root, so a project living inside a directory
     named `build` or `vendor` still scans, and skipped trees (node_modules,
@@ -72,7 +72,12 @@ def discover_files(paths: list[Path], cfg=None) -> list[Path]:
                     and (cfg is None or not matches_any(rel_of(d), cfg.exclude))
                 )
                 for fname in sorted(filenames):
-                    if Path(fname).suffix.lower() not in EXTENSIONS:
+                    suffix = Path(fname).suffix.lower()
+                    if suffix not in EXTENSIONS:
+                        # tally what the walk passes over, so a tree of
+                        # unsupported source files is a visible coverage gap
+                        if unsupported is not None and suffix:
+                            unsupported[suffix] += 1
                         continue
                     if cfg is not None and not selected(rel_of(fname), cfg):
                         continue
@@ -131,18 +136,34 @@ def _emit_and_exit(findings, stats, args, cfg) -> int:
 
 
 def cmd_check(args) -> int:
+    from collections import Counter
+
     paths = _validated_paths(args.paths)
     cfg = _load_config(args)
-    files = discover_files(paths, cfg)
+    unsupported: Counter = Counter()
+    files = discover_files(paths, cfg, unsupported)
     skipped = _skipped_explicit(paths)
     if skipped:
         print(f"uncomment: note: {skipped} unsupported file(s) skipped", file=sys.stderr)
+    notable = [(ext, n) for ext, n in unsupported.most_common(5) if n >= 5]
+    if notable:
+        shown = ", ".join(f"{ext} x{n}" for ext, n in notable)
+        print(
+            f"uncomment: note: {sum(unsupported.values())} file(s) in unsupported "
+            f"languages not scanned ({shown})",
+            file=sys.stderr,
+        )
     findings = []
     for f in files:
         sf = extract_file(f)
         if sf is not None:
             findings.extend(run_rules(sf, cfg))
-    stats = {"mode": "check", "files_scanned": len(files), "files_skipped": skipped}
+    stats = {
+        "mode": "check",
+        "files_scanned": len(files),
+        "files_skipped": skipped,
+        "files_unsupported": sum(unsupported.values()),
+    }
     return _emit_and_exit(findings, stats, args, cfg)
 
 

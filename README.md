@@ -19,11 +19,15 @@ Python** (docstrings included), **Java, C#, Kotlin, Swift**.
 Requires Python ≥ 3.13 and [uv](https://docs.astral.sh/uv/):
 
 ```console
+uvx --from git+https://github.com/sigman78/uncomment uncomment check .
 uv run uncomment check src/                      # scan everything
 uv run uncomment gate src/ --baseline git:HEAD   # judge only new comments
 git diff | uv run uncomment gate --diff -        # judge only what a diff added
 uv run uncomment rules                           # list rules
 ```
+
+Note: plain `uvx uncomment` installs an unrelated PyPI package of the same
+name — use the `--from git+` form above until this tool is published.
 
 Exit codes: `0` clean, `1` gated findings, `2` bad input — always loud, never
 a silently green gate. **`check`** scans every comment; **`gate`** compares

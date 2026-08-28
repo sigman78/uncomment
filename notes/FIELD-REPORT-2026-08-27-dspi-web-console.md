@@ -1,3 +1,11 @@
+> **STATUS: addressed in v0.12.1 (dspi-fixes).** Issue 1: edit-context nouns
+> narrowed (bare `the old code/logic` needs an edit verb; implementation/version
+> stay). Issue 2: `fixed` gained a participial-adjective branch with a wider
+> spared-noun set. Issue 3: assignment-to-call must be a whole statement,
+> literal-LHS glosses and brace-tuple glosses read as prose. Appendix: the walk
+> now reports unsupported-language counts (".svelte x70"), and the README shows
+> the `uvx --from git+` form. Re-run on this repo: 1 error -> 0, 80 warns -> 61.
+
 # Field report: false positives from a real-repo run (dspi-web-console)
 
 Filed by a Claude Code session running a diagnostic in `D:\non-esp\dspi-web-console`

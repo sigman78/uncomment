@@ -16,3 +16,24 @@ export function legacyBridge(): unknown {
   // @ts-expect-error the vendor bundle attaches this at runtime without types
   return shim.__vendorHook();
 }
+
+// Drop any previous result synchronously, BEFORE the device round-trip.
+// A stale DONE/TIMEOUT would finish the new learn with the old code.
+export function armIrLearn(session: { irLearn: unknown }): void {
+  session.irLearn = null;
+}
+
+// PARAM_CHANGED, source=HOST(1), size=0
+export const NOTIFY_FIXTURE = new Uint8Array([2, 2, 0, 1]);
+
+// qp = round(1.5*512) = 768, little-endian at bytes 16-17.
+export const QP_RAW = 768;
+
+// {current pipeline Hz, selected I2S input Hz}
+export const RATE_REPLY = [48_000, 44_100];
+
+// LR(N) = BW(N/2) squared: every half-order pole doubled.
+export const LR_ORDER = 4;
+
+// Fixed input x output grid; iterate the live side.
+export const GRID = [8, 8];
