@@ -201,6 +201,23 @@ drop every UC013 finding. Changes:
 fingerprint, so a fixer that rewrites `#if 0` content still fails the
 comments-only proof.
 
+## Backward compatibility
+
+Existing trees that contain constant-false regions gain new UC013 warnings
+in scan mode — that is the point, but users of `check` in CI will see new
+findings on unchanged code; the release notes must say so. Gate mode is
+quieter: pre-existing regions match the baseline and stay silent. The
+`added_code_lines` correction shifts UC100 denominators wherever a diff
+contains disabled lines — strictly toward firing *more* readily, never
+less; existing corpus expectations are unaffected because no corpus file
+mixes disabled regions into UC100 scenarios. No config, marker, exit-code,
+or output-format changes. `verify` semantics are deliberately untouched.
+
+**Rust port**: detection rides the extraction seam (tree-sitter node
+inspection plus one linear pass for Swift's flat directives) — the same
+grammars exist on the Rust side, and `DisabledRegion` is plain data. Nothing
+Python-specific.
+
 ## Expectations
 
 Once shipped: `#if 0`/`cfg(any())`/`if (false)` regions warn like the

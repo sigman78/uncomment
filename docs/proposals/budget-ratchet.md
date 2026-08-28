@@ -187,6 +187,30 @@ tighten` locks in the gain.
   already CRLF-safe; the lock stores integers only, serialized sorted with
   LF — `tighten` on Windows and Linux produces identical bytes.
 
+## Backward compatibility
+
+Purely additive: a new subcommand, three new config keys, one new committed
+file. No existing command, finding, metric, or exit code changes; repos
+that never run `budget init` see zero difference. The lock's `version = 1`
+field is the format's escape hatch — a future layout bumps it and the tool
+refuses locks it does not understand (exit 2), never misreads them.
+
+**Rust port**: rides the scan seam (discovery + extraction + the prose
+measure); the lock is language-neutral TOML with integers, so a Rust
+`budget` implementation reads and writes the same file byte-for-byte —
+byte-stable serialization is part of the contract precisely so mixed
+Python/Rust use during the transition cannot churn the lock.
+
+## Alternatives considered
+
+- **Global or per-directory budget** instead of per-file: rejected — a
+  shared pool invites laundering (delete comments in one file to afford
+  noise in another); per-file history is the ratchet's power.
+- **Storing density as a float**: rejected for diff churn and platform
+  float-formatting risk; two integers carry the same information legibly.
+- **Auto-loosening after N releases / on re-init by CI**: rejected — any
+  automatic upward path reintroduces the creep the ratchet exists to stop.
+
 ## Expectations
 
 Once shipped: slow comment accretion fails CI at the first commit that

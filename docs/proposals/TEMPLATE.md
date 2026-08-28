@@ -1,7 +1,9 @@
 # Proposal template
 
 Every file in `docs/proposals/` follows this shape. Copy, fill, delete the
-guidance comments.
+guidance comments. `Why`, `How`, and `Expectations` are mandatory; the other
+sections appear when they have real content — an empty "Alternatives" is
+noise, a missing "Backward compatibility" on a behavior change is a hole.
 
 ```markdown
 ---
@@ -25,7 +27,23 @@ tier), record it here with the date.
 
 The design. Free-form subsections (`###`) — detection mechanics, file
 formats, command surface, config keys, edge cases. Verified facts (AST
-shapes, measured numbers) beat assumptions; say which is which.
+shapes, measured numbers) beat assumptions; say which is which. Performance
+notes belong here when the change touches a hot path (gate over hundreds of
+files, history walks).
+
+## Backward compatibility        <!-- when the change alters observable behavior -->
+
+What existing users see differently: findings that appear or move on
+unchanged trees, gate metrics that shift, config/marker/exit-code contract
+changes, migration steps if any. New files or formats state their
+versioning story. Include a **Rust port** note: which seam the change rides
+and whether anything about it is Python-specific — the corpus and every
+committed format must survive the port unchanged.
+
+## Alternatives considered       <!-- optional -->
+
+Designs that were rejected, each with the reason — especially ones a future
+reader would otherwise re-propose.
 
 ## Expectations
 
@@ -44,6 +62,11 @@ tests, gate cases.
 ### Checklist
 
 - [ ] implementation steps, docs, version bump
+
+## Open questions                <!-- optional, drafts only -->
+
+Unresolved decisions blocking `accepted`; resolve and delete before
+implementation starts.
 ```
 
 Status semantics: `draft` = being shaped, `accepted` = agreed to build,
