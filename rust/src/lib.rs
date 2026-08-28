@@ -4,7 +4,13 @@
 //! context) is at measured parity via rust/parity.py. Rules, gate, and the
 //! CLI follow.
 
+pub mod config;
 pub mod directives;
 pub mod extract;
+pub mod filtering;
+pub mod gate;
 pub mod languages;
 pub mod model;
+pub mod rules;
+pub mod similarity;
+pub mod textutil;

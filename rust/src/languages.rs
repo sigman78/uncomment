@@ -87,6 +87,14 @@ pub fn spec_for_path(path: &str) -> Option<(&'static LangSpec, Language)> {
     })
 }
 
+// files whose purpose is the public interface: API documentation BELONGS here
+const INTERFACE_SUFFIXES: &[&str] = &[".h", ".hpp", ".hh", ".hxx", ".d.ts", ".d.mts", ".d.cts", ".pyi"];
+
+pub fn is_interface_file(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    INTERFACE_SUFFIXES.iter().any(|s| lower.ends_with(s))
+}
+
 pub fn is_comment_node(kind: &str) -> bool {
     matches!(kind, "comment" | "line_comment" | "block_comment" | "multiline_comment")
 }

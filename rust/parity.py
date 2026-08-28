@@ -18,7 +18,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
+from unwaffle.config import Config  # noqa: E402
 from unwaffle.extract import extract_file  # noqa: E402
+from unwaffle.rules import run_rules  # noqa: E402
 from unwaffle.languages import EXTENSIONS  # noqa: E402
 
 FIELDS = ("start_line", "end_line", "col", "kind", "attachment", "content",
@@ -49,6 +51,10 @@ def py_dump(path: Path) -> dict | None:
         ],
         "functions": [
             [f.name, f.start_line, f.end_line, f.body_line_count] for f in sf.functions
+        ],
+        "findings": [
+            [f.rule, f.line, f.end_line, f.severity.name.lower()]
+            for f in run_rules(sf, Config())
         ],
     }
 
@@ -103,6 +109,12 @@ def main(argv: list[str]) -> int:
                       for f in rust.get("functions", [])]
         if rust_funcs != py["functions"]:
             diffs.append(f"  functions: rust={rust_funcs} py={py['functions']}")
+        rust_findings = [[f["rule"], f["line"], f["end_line"], f["severity"]]
+                         for f in rust.get("findings", [])]
+        if rust_findings != py["findings"]:
+            gone = [f for f in py["findings"] if f not in rust_findings]
+            extra = [f for f in rust_findings if f not in py["findings"]]
+            diffs.append(f"  findings: missing in rust={gone} extra in rust={extra}")
         if diffs:
             mismatched_files += 1
             print(f"DIFF {f}")

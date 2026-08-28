@@ -2,10 +2,13 @@
 //! suite; a language is held to the full findings contract once its rules
 //! are ported, and to extraction smoke checks before that.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use unwaffle::config::Config;
 use unwaffle::extract::extract_path;
-use unwaffle::model::Kind;
+use unwaffle::model::{Kind, Severity};
+use unwaffle::rules::run_rules;
 
 fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/corpus")
@@ -63,6 +66,67 @@ fn python_clean_extracts() {
     for cl in &sf.code_lines {
         assert!(!cl.trim_start().starts_with('#'), "comment survived masking: {cl}");
     }
+}
+
+fn expected_pairs(val: &serde_json::Value, key: &str) -> BTreeSet<(String, u64)> {
+    val[key]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|e| (e[0].as_str().unwrap().to_string(), e[1].as_u64().unwrap()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The same contract test_corpus.py enforces: exact warn/error set per noisy
+/// file, expected hints present, clean files at zero findings.
+#[test]
+fn corpus_findings_match_expectations() {
+    let cfg = Config::default();
+    let mut failures = Vec::new();
+    for entry in std::fs::read_dir(corpus_dir()).unwrap().filter_map(Result::ok) {
+        for file in std::fs::read_dir(entry.path()).unwrap().filter_map(Result::ok) {
+            let path = file.path();
+            let name = file.file_name().to_string_lossy().to_string();
+            if name.ends_with(".expected.json") {
+                continue;
+            }
+            let Some(sf) = extract_path(&path) else { continue };
+            let findings = run_rules(&sf, &cfg);
+            if name.starts_with("clean") {
+                if !findings.is_empty() {
+                    let got: Vec<_> = findings.iter().map(|f| (f.rule, f.line, &f.message)).collect();
+                    failures.push(format!("{name}: false positives on clean code: {got:?}"));
+                }
+                continue;
+            }
+            let sidecar = path.with_file_name(format!("{name}.expected.json"));
+            let expected: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(sidecar).unwrap()).unwrap();
+            let actual_gating: BTreeSet<(String, u64)> = findings
+                .iter()
+                .filter(|f| f.severity >= Severity::Warn)
+                .map(|f| (f.rule.to_string(), f.line as u64))
+                .collect();
+            let expected_gating = expected_pairs(&expected, "findings");
+            for miss in expected_gating.difference(&actual_gating) {
+                failures.push(format!("{name}: recall regression, finding disappeared: {miss:?}"));
+            }
+            for extra in actual_gating.difference(&expected_gating) {
+                failures.push(format!("{name}: new noise, unexpected finding: {extra:?}"));
+            }
+            let actual_hints: BTreeSet<(String, u64)> = findings
+                .iter()
+                .filter(|f| f.severity == Severity::Info)
+                .map(|f| (f.rule.to_string(), f.line as u64))
+                .collect();
+            for miss in expected_pairs(&expected, "hints").difference(&actual_hints) {
+                failures.push(format!("{name}: expected hint disappeared: {miss:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
 #[test]

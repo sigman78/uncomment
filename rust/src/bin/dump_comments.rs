@@ -2,8 +2,10 @@
 //! rust/parity.py to diff against the Python implementation.
 
 use serde::Serialize;
+use unwaffle::config::Config;
 use unwaffle::extract::extract_path;
-use unwaffle::model::{Comment, FunctionInfo};
+use unwaffle::model::{Comment, Finding, FunctionInfo};
+use unwaffle::rules::run_rules;
 
 #[derive(Serialize)]
 struct FileDump {
@@ -13,6 +15,7 @@ struct FileDump {
     comment_line_count: usize,
     comments: Vec<Comment>,
     functions: Vec<FunctionInfo>,
+    findings: Vec<Finding>,
 }
 
 fn main() {
@@ -25,6 +28,7 @@ fn main() {
                 supported: true,
                 code_line_count: sf.code_line_count,
                 comment_line_count: sf.comment_line_count,
+                findings: run_rules(&sf, &Config::default()),
                 comments: sf.comments,
                 functions: sf.functions,
             }),
@@ -35,6 +39,7 @@ fn main() {
                 comment_line_count: 0,
                 comments: Vec::new(),
                 functions: Vec::new(),
+                findings: Vec::new(),
             }),
         }
     }

@@ -84,7 +84,7 @@ pub struct FunctionInfo {
     pub body_line_count: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SourceFile {
     pub path: String,
     pub lang: &'static str,
