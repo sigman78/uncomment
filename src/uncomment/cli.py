@@ -210,6 +210,19 @@ def cmd_gate(args) -> int:
     return _emit_and_exit(result.findings, stats, args, cfg)
 
 
+def cmd_verify(args) -> int:
+    from .gate import verify_comments_only
+
+    problems = verify_comments_only(_read_diff(args.diff))
+    if problems:
+        for path, detail in problems:
+            print(f"{path}: NOT comment-only: {detail}")
+        print(f"\n{len(problems)} file(s) with non-comment changes")
+        return 1
+    print("diff is comment-only")
+    return 0
+
+
 def cmd_rules(args) -> int:
     if args.format == "json":
         doc = [
@@ -281,6 +294,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="gate the files a unified diff changed, using the diff itself as the "
                              "baseline ('-' reads the diff from stdin)")
     p_gate.set_defaults(fn=cmd_gate)
+
+    p_verify = sub.add_parser(
+        "verify", help="prove a unified diff touches comments only (for autonomous fixer loops)"
+    )
+    p_verify.add_argument("--diff", metavar="FILE", required=True,
+                          help="unified diff to verify ('-' reads stdin)")
+    p_verify.set_defaults(fn=cmd_verify)
 
     p_rules = sub.add_parser("rules", help="list rules")
     p_rules.add_argument("--format", choices=["text", "json"], default="text")

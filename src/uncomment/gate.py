@@ -597,6 +597,55 @@ def gate_diff(diff_text: str, cfg: Config, restrict: list[Path] | None = None,
     return result
 
 
+def _code_fingerprint(path_label: str, text: str, spec) -> list[str]:
+    """Comment-stripped, whitespace-trimmed, non-blank code lines. Two files
+    with equal fingerprints differ only in comments and blank space."""
+    sf = extract_source(path_label, text, spec)
+    return [ln.rstrip() for ln in sf.code_lines if ln.strip()]
+
+
+def verify_comments_only(diff_text: str, root: Path | None = None) -> list[tuple[str, str]]:
+    """Prove a unified diff touches nothing but comments. Returns violations
+    as (path, detail); empty means every change is comment-only. Built for
+    autonomous comment-fixer loops: a fixer that drifted into code is caught
+    here, not in review. Conservative by design — deletions, binary changes,
+    and unsupported languages are violations, never assumptions."""
+    from .diffio import parse_diff, reverse_apply
+
+    root = (root or Path.cwd()).resolve()
+    problems: list[tuple[str, str]] = []
+    for fp in parse_diff(diff_text):
+        if fp.new_path is None:
+            problems.append((fp.old_path or "<unknown>", "file deleted"))
+            continue
+        if fp.binary:
+            problems.append((fp.new_path, "binary change"))
+            continue
+        spec = spec_for_path(fp.new_path)
+        if spec is None:
+            problems.append((fp.new_path, "unsupported language, cannot verify"))
+            continue
+        disk = _locate_diff_file(fp.new_path, root)
+        if disk is None:
+            raise ToolError(
+                f"file from diff not found on disk: {fp.new_path} "
+                "(stale diff, or run from the directory the diff paths are relative to)"
+            )
+        new_text = disk.read_text(encoding="utf-8-sig", errors="replace")
+        old_lines = [] if fp.old_path is None else reverse_apply(fp, _split_lines(new_text), fp.new_path)
+        old_text = "\n".join(old_lines) + ("\n" if old_lines else "")
+        old_code = _code_fingerprint(fp.new_path, old_text, spec)
+        new_code = _code_fingerprint(fp.new_path, new_text, spec)
+        if old_code != new_code:
+            i = next(
+                (k for k, (a, b) in enumerate(zip(old_code, new_code)) if a != b),
+                min(len(old_code), len(new_code)),
+            )
+            near = new_code[i] if i < len(new_code) else old_code[i]
+            problems.append((fp.new_path, f"code changed near: {near.strip()!r}"))
+    return problems
+
+
 def gate_file(new_path: Path, baseline: str, new_root: Path, cfg: Config) -> tuple[list[Finding], SourceFile | None, dict]:
     """Single-file convenience wrapper used by tests and simple hooks."""
     sf = extract_file(new_path)
