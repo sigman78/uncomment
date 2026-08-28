@@ -358,7 +358,10 @@ def function_density(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 _DOC_TAG_RE = re.compile(
     r"[@\\](t?param|returns?|retval|throws?|arg|brief|details|note|warning|see|sa|since"
     r"|ingroup|defgroup|addtogroup|copydoc|deprecated|exception|pre|post|file|invariant)\b"
-    r"|Args:|Returns:|Raises:|# Arguments|# Errors|# Panics|# Safety|# Examples",
+    r"|Args:|Returns:|Raises:|# Arguments|# Errors|# Panics|# Safety|# Examples"
+    # Swift doc callouts and C# XML doc tags
+    r"|-\s+(Parameters?|Returns?|Throws|Note|Warning|Important|Precondition)s?:"
+    r"|</?(summary|param|returns|remarks|exception)\b",
     re.IGNORECASE,
 )
 
@@ -481,7 +484,7 @@ def trailing_length(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
 
 
 _BOILERPLATE_RE = re.compile(
-    r"^(imports?|includes?|variables?|globals?|constants?|fields?|members?|types?|"
+    r"^(imports?|includes?|usings?|variables?|globals?|constants?|fields?|members?|types?|"
     r"(private|public|protected|static)\s+(methods?|members?|fields?|functions?)|"
     r"helpers?|helper functions?|utility functions?|utils?|main( function| entry point)?|"
     r"constructors?|destructors?|getters?( and setters?)?|setters?|accessors?|"

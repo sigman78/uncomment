@@ -17,12 +17,13 @@ from .languages import COMMENT_NODE_TYPES, LangSpec, spec_for_path
 from .model import Attachment, Comment, FunctionInfo, Kind, SourceFile
 
 _NAME_NODE_TYPES = frozenset(
-    {"identifier", "field_identifier", "type_identifier", "property_identifier", "destructor_name", "operator_name"}
+    {"identifier", "field_identifier", "type_identifier", "property_identifier", "destructor_name",
+     "operator_name", "simple_identifier"}
 )
 
 # a header comment directly above one of these lines documents the file, not the line
 _IMPORT_LINE_RE = re.compile(
-    r"^\s*(#\s*(include|pragma|ifndef|define)\b|import\b|from\b|package\b|using\b|use\b|extern crate\b|mod\b|module\b|['\"]use strict)"
+    r"^\s*(#\s*(include|pragma|ifndef|define)\b|import\b|from\b|package\b|using\b|use\b|namespace\b|extern crate\b|mod\b|module\b|['\"]use strict)"
 )
 
 
@@ -38,7 +39,20 @@ def _function_name(node) -> str:
             if n.type in _NAME_NODE_TYPES:
                 return n.text.decode("utf-8", "replace")
             stack = list(n.children) + stack
+    # kotlin's function_declaration carries no name field: the identifier
+    # sits among the direct children
+    for child in node.children:
+        if child.type in _NAME_NODE_TYPES:
+            return child.text.decode("utf-8", "replace")
     return "<anonymous>"
+
+
+def _function_body(node):
+    body = node.child_by_field_name("body")
+    if body is None:
+        # kotlin/swift bodies are typed children without a field name
+        body = next((ch for ch in node.children if ch.type in ("function_body", "block")), None)
+    return body
 
 
 def _trim_blank_edges(out: list[str]) -> str:
@@ -159,7 +173,7 @@ def extract_source(path: str, source: str, spec: LangSpec) -> SourceFile:
         child_func, child_in = func_name, in_func
         if node.type in spec.function_nodes:
             name = _function_name(node)
-            body = node.child_by_field_name("body")
+            body = _function_body(node)
             if body is not None:
                 functions.append(
                     FunctionInfo(

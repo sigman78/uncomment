@@ -62,7 +62,8 @@ def test_clean_file_has_no_findings(path: Path):
 
 def test_every_language_has_corpus():
     languages = {p.parent.name for p in NOISY}
-    assert languages == {"c", "cpp", "js", "ts", "tsx", "rust", "go", "python"}
+    assert languages == {"c", "cpp", "js", "ts", "tsx", "rust", "go", "python",
+                         "java", "csharp", "kotlin", "swift"}
     assert {p.parent.name for p in CLEAN} == languages
 
 

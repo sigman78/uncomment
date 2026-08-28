@@ -12,7 +12,7 @@ prompt. What it never touches: real API documentation, WHY-comments, license
 headers, and tooling directives.
 
 Supported languages: **C, C++, JavaScript (JSX), TypeScript (TSX), Rust, Go,
-Python** (docstrings included).
+Python** (docstrings included), **Java, C#, Kotlin, Swift**.
 
 ## Quick start
 
