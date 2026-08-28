@@ -19,7 +19,7 @@ from uncomment.rules import run_rules
 NOISY = "// utilize the buffer in order to facilitate reads\nint x;\n"
 
 
-# ---- path validation ----
+# path validation
 
 def test_nonexistent_path_exits_2(capsys):
     assert main(["check", "does_not_exist.c"]) == 2
@@ -52,7 +52,7 @@ def test_skip_dirs_apply_only_below_scan_root(tmp_path):
     assert found == ["a.c"]
 
 
-# ---- baseline validation ----
+# baseline validation
 
 def test_bad_git_ref_exits_2(tmp_path, capsys):
     f = tmp_path / "a.c"
@@ -68,7 +68,7 @@ def test_missing_baseline_dir_exits_2(tmp_path, capsys):
     assert "baseline path" in capsys.readouterr().err
 
 
-# ---- config validation ----
+# config validation
 
 def _cfg_file(tmp_path, text: str) -> str:
     p = tmp_path / "cfg.toml"
@@ -130,7 +130,7 @@ def test_disable_arg_rejects_empty_and_bogus_entries():
     assert parse_disable_arg("STE,UC011") == ["STE", "UC011"]
 
 
-# ---- version / output encoding ----
+# version / output encoding
 
 def test_version_flag(capsys):
     from uncomment import __version__
@@ -155,7 +155,7 @@ def test_to_ascii_transliteration():
     assert to_ascii("'utilize' → use…") == "'utilize' -> use..."
 
 
-# ---- UC012 emoji / ascii-comments ----
+# UC012 emoji / ascii-comments
 
 def test_emoji_comment_flagged():
     src = "// \U0001f680 fast path for small arrays ⚡\nconst x = 1;\n"

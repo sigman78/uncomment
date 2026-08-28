@@ -28,7 +28,7 @@ def _rules_fired(path, src, spec, cfg=None):
     return run_rules(sf, cfg or Config())
 
 
-# ---- fuzzy / tree-wide baseline matching ----
+# fuzzy / tree-wide baseline matching
 
 def test_typo_fix_is_not_a_new_comment(tmp_path):
     old = _tree(tmp_path, "old", {"a.js": "// Keeps latency low on slow disks becuase of caching.\nconst a = 1;\n"})
@@ -60,7 +60,7 @@ def test_renamed_file_comments_are_not_new(tmp_path):
     assert not any(f.rule == "UC100" for f in result.findings)
 
 
-# ---- noise-density flood ----
+# noise-density flood
 
 def test_license_header_new_file_does_not_flood(tmp_path):
     license_lines = "\n".join(f"// license line {i}: permission text of the MIT license" for i in range(14))
@@ -79,7 +79,7 @@ def test_narration_flood_still_fires(tmp_path):
     assert any(f.rule == "UC100" for f in findings)
 
 
-# ---- per-line directive exemption ----
+# per-line directive exemption
 
 def test_prose_block_behind_eslint_disable_is_judged():
     src = (
@@ -111,7 +111,7 @@ def test_nolint_paren_with_rationale_still_exempt():
     assert sf.comments[0].is_directive
 
 
-# ---- uncomment-ignore suppressions ----
+# uncomment-ignore suppressions
 
 def test_inline_suppression_of_named_rule():
     src = "// Changed the retry logic as requested uncomment-ignore[UC003]: policy exception\nint x;\n"
@@ -149,7 +149,7 @@ def test_marker_comment_is_not_judged_or_counted(tmp_path):
     assert stats["new_comments"] == 0
 
 
-# ---- UC003 evidence tiers ----
+# UC003 evidence tiers
 
 def _uc003(src: str):
     return [f for f in _rules_fired("t.c", src, C) if f.rule == "UC003"]

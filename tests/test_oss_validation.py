@@ -13,7 +13,7 @@ def _fired(path: str, src: str, spec, cfg: Config | None = None):
     return {f.rule for f in run_rules(extract_source(path, src, spec), cfg or Config())}
 
 
-# ---- UC007: enum-case docs are required by ecosystem lint ----
+# UC007: enum-case docs are required by ecosystem lint
 
 def test_documented_enum_case_is_not_redundant():
     src = ("enum TrustError {\n"
@@ -28,7 +28,7 @@ def test_redundant_method_doc_still_fires():
     assert "UC007" in _fired("t.swift", src, SWIFT)
 
 
-# ---- UC002: bare "we" needs a process verb ----
+# UC002: bare "we" needs a process verb
 
 def test_state_prose_we_is_spared():
     for text in (
@@ -46,7 +46,7 @@ def test_process_we_is_still_narration():
     assert "UC002" in _fired("t.c", src, C)
 
 
-# ---- UC005: keyword-led English is prose ----
+# UC005: keyword-led English is prose
 
 def test_keyword_prose_is_not_dead_code():
     for text in (
@@ -69,7 +69,7 @@ def test_keyword_code_still_fires():
         assert "UC005" in _fired(path, src, spec), src
 
 
-# ---- UC003: runtime removal prose vs the version-history form ----
+# UC003: runtime removal prose vs the version-history form
 
 def test_runtime_removal_prose_is_clean():
     src = "// if the node was removed from the stack, use the element above it\nint x;\n"
@@ -81,7 +81,7 @@ def test_version_history_removal_still_errors():
     assert "UC003" in _fired("t.java", src, JAVA)
 
 
-# ---- UC009: URLs and the 80-char default ----
+# UC009: URLs and the 80-char default
 
 def test_citation_url_does_not_spend_the_budget():
     src = ("int m = 1; // [GET](https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.3)"

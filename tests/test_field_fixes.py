@@ -21,7 +21,7 @@ def _fired(path: str, src: str, spec, cfg: Config | None = None):
     return {f.rule for f in run_rules(extract_source(path, src, spec), cfg or Config())}
 
 
-# ---- UC005: spaced arrows are mapping prose, attached arrows are code ----
+# UC005: spaced arrows are mapping prose, attached arrows are code
 
 def test_arrow_mapping_prose_is_not_dead_code():
     py = spec_for_path("x.py")
@@ -41,7 +41,7 @@ def test_attached_member_arrow_is_still_code():
     assert "UC005" in _fired("t.c", src, C)
 
 
-# ---- UC003: lifetime prose vs behavioral change narration ----
+# UC003: lifetime prose vs behavioral change narration
 
 def test_no_longer_needed_lifetime_doc_is_clean():
     src = ("/* It is a responsibility of the user to free the parsed report map,\n"
@@ -54,7 +54,7 @@ def test_no_longer_uses_is_still_edit_narration():
     assert "UC003" in _fired("t.c", src, C)
 
 
-# ---- UC100: info hints and doc comments never escalate into a flood ----
+# UC100: info hints and doc comments never escalate into a flood
 
 def _gate(tmp_path, old: str, new: str):
     old_dir = tmp_path / "old"
@@ -86,7 +86,7 @@ def test_warn_noisy_lines_still_flood(tmp_path):
     assert any(f.rule == "UC100" for f in findings)
 
 
-# ---- UC009: the message names the limit that tripped ----
+# UC009: the message names the limit that tripped
 
 def test_trailing_message_names_word_limit():
     src = "int x = 1; // a note that has quite a lot of small words in it here\n"
@@ -99,7 +99,7 @@ def test_max_trailing_words_is_configurable():
     assert "UC009" not in _fired("t.c", src, C, Config(max_trailing_words=20))
 
 
-# ---- STE01: doc tags and joined clauses segment properly ----
+# STE01: doc tags and joined clauses segment properly
 
 def test_doc_tag_lines_are_separate_sentences():
     text = ("Maps a HID usage to the internal key code\n"
@@ -126,7 +126,7 @@ def test_doxygen_block_produces_no_ste01():
     assert "STE01" not in _fired("t.h", src, C)
 
 
-# ---- unicode-output auto-fallback on legacy consoles ----
+# unicode-output auto-fallback on legacy consoles
 
 def _run_with_stdout_encoding(tmp_path, monkeypatch, encoding: str) -> bytes:
     noisy = tmp_path / "a.js"

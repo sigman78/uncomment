@@ -17,7 +17,7 @@ def _fired(path: str, src: str, spec, cfg: Config | None = None):
     return {f.rule for f in run_rules(extract_source(path, src, spec), cfg or Config())}
 
 
-# ---- agent labels mirror effective severity ----
+# agent labels mirror effective severity
 
 def test_promoted_rule_is_marked_must_fix():
     cfg = Config(severity={"STE01": "warn"})
@@ -37,7 +37,7 @@ def test_demoted_rule_is_marked_consider():
     assert "`UC004` [consider]" in out
 
 
-# ---- UC101 measures net growth, not rewrite volume ----
+# UC101 measures net growth, not rewrite volume
 
 def _gate(tmp_path, old_text, new_text):
     old = tmp_path / "old"
@@ -71,7 +71,7 @@ def test_true_doubling_still_amplifies(tmp_path):
     assert any(f.rule == "UC101" for f in findings)
 
 
-# ---- UC005: legends are prose, dead code still is not ----
+# UC005: legends are prose, dead code still is not
 
 LEGENDS = [
     ("t.c", "/* LI=0 VN=3 Mode=3 client */\nstatic unsigned char b = 0x1B;\n", C),
@@ -88,7 +88,7 @@ def test_legend_comments_are_not_dead_code():
         assert "UC005" not in _fired(path, src, spec), src
 
 
-# ---- STE01/STE04: no incentive to punctuate fragments ----
+# STE01/STE04: no incentive to punctuate fragments
 
 def test_list_and_legend_lines_do_not_trip_ste01():
     src = ("/* supported sync modes:\n"
