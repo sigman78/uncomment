@@ -93,6 +93,7 @@ class _FileState:
     added_code_lines: int
     had_counterpart: bool
     old_prose_lines: int = 0
+    new_prose_lines: int = 0  # ALL visible prose lines in the new file
 
 
 _repo_top_cache: dict[Path, Path | None] = {}
@@ -332,16 +333,19 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
     # measure must not count the aggregate UC101 signal below
 
     # UC101 comment amplification: the "sees comments, writes more comments"
-    # pattern. Fires on prose volume alone, so elaboration sprees are caught
-    # even when every individual comment evades the per-comment rules.
-    new_prose = _prose_lines(st.unmatched)
+    # pattern. Fires on NET growth of the file's prose volume, so an in-place
+    # rewrite (old comments replaced by reworded ones) is not amplification —
+    # only a file whose prose actually multiplied is. Elaboration sprees are
+    # still caught even when every comment evades the per-comment rules.
+    net_growth = st.new_prose_lines - st.old_prose_lines
+    prose_comments = _prose_comments(st.unmatched)
     if (
         st.had_counterpart
         and st.old_prose_lines > 0
-        and new_prose >= cfg.growth_min_lines
-        and new_prose >= cfg.growth_factor * st.old_prose_lines
+        and prose_comments
+        and net_growth >= cfg.growth_min_lines
+        and net_growth >= cfg.growth_factor * st.old_prose_lines
     ):
-        prose_comments = _prose_comments(st.unmatched)
         findings.append(
             Finding(
                 rule="UC101",
@@ -350,8 +354,8 @@ def _finalize(st: _FileState, cfg: Config) -> list[Finding]:
                 line=prose_comments[0].start_line,
                 end_line=prose_comments[-1].end_line,
                 message=(
-                    f"comment amplification: {new_prose} new prose comment lines in a file "
-                    f"that had {st.old_prose_lines}"
+                    f"comment amplification: prose comments grew from {st.old_prose_lines} "
+                    f"to {st.new_prose_lines} lines"
                 ),
                 action=(
                     "This edit multiplied the file's comments. Existing comments are not an invitation "
@@ -421,7 +425,8 @@ def _gate(files: list[Path], provider, cfg: Config, root_of) -> GateResult:
                 old_norms = Counter(_norm(c) for c in old_visible)
                 old_code_lines = old_sf.code_line_count
                 old_prose_lines = _prose_lines(old_visible)
-            unmatched = _consume_exact(visible_comments(sf, cfg), old_norms)
+            visible_new = visible_comments(sf, cfg)
+            unmatched = _consume_exact(visible_new, old_norms)
             cross_pool += old_norms  # leftovers feed cross-file matching
             states.append(
                 _FileState(
@@ -431,6 +436,7 @@ def _gate(files: list[Path], provider, cfg: Config, root_of) -> GateResult:
                     added_code_lines=max(0, sf.code_line_count - old_code_lines),
                     had_counterpart=old_source is not None,
                     old_prose_lines=old_prose_lines,
+                    new_prose_lines=_prose_lines(visible_new),
                 )
             )
 

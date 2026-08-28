@@ -48,11 +48,13 @@ code line.
 
 The *comment amplification* signal (`UC101`, warn) targets the signature
 habit of over-eager agents: seeing existing comments and answering with more.
-When an edit adds `growth-min-lines` (6) or more prose comment lines to a
-file whose prose comments it at least doubles (`growth-factor`), UC101 fires
-on volume alone — even when every individual comment is worded cleanly enough
-to evade the per-comment rules. Documentation and license text never count on
-either side.
+It measures the **net growth** of the file's prose volume: when an edit grows
+a file's prose comments by `growth-min-lines` (6) or more lines and by at
+least `growth-factor` (1.0) times what was there, UC101 fires on volume
+alone — even when every individual comment is worded cleanly enough to evade
+the per-comment rules. Because the measure is net, an in-place rewrite —
+old comments replaced by reworded ones, as in a lint sweep — is not
+amplification. Documentation and license text never count on either side.
 
 ## Diff input
 

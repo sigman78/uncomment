@@ -204,13 +204,17 @@ def banner(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
                 break
 
 
-_CODEISH_RES = [
+# strong code signals: enough on their own to call a single commented line
+# dead code
+_STRONG_CODEISH_RES = [
     re.compile(r"[;{}]\s*$"),
     re.compile(r"^\s*[{}]\s*$"),
     re.compile(r"^\s*(if|elif|for|while|switch|return|import|export|let|const|var|fn|func|def|pub|static|struct|class|case|else|try|catch|except|finally|with|raise|yield|assert)\b.*[;{()=:]"),
     re.compile(r"^\s*#\s*(include|define|if|ifdef|ifndef|endif|pragma)\b"),
-    re.compile(r"^\s*[\w.\[\]:>*&-]+\s*\(.*\)\s*;?\s*$"),  # calls, incl. chained
-    re.compile(r"^\s*[\w.\[\]]+\s*[-+*/|&^:]?=\s*[^=]"),
+    # calls, incl. chained; the paren must follow the callee DIRECTLY, so a
+    # range label like "Cyrillic (basic Russian + extensions)" stays prose
+    re.compile(r"^\s*[\w.\[\]:>*&-]+\(.*\)\s*;?\s*$"),
+    re.compile(r"=\s*[\w.\[\]]+\("),  # assignment whose right side is a call
     # attached arrows are member access (p->next); a SPACED arrow is mapping
     # prose ("HID events -> ui_key_t") and must not read as code on its own
     re.compile(r"\w->\w|\)\s*{"),
@@ -223,18 +227,28 @@ _CODEISH_RES = [
     re.compile(r"^\s*@\w[\w.]*(\(.*\))?\s*$"),
 ]
 
+# a bare assignment shape also appears in legends ("LI=0 VN=3 client",
+# "None = never written (a bug)", "r=0xF8 -> bits[15:11]=11111"), so on its
+# own it only counts inside a multi-line block
+_WEAK_CODEISH_RES = [
+    re.compile(r"^\s*[\w.\[\]]+\s*[-+*/|&^:]?=\s*[^=]"),
+]
+
+_CODEISH_RES = _STRONG_CODEISH_RES + _WEAK_CODEISH_RES
+
 
 # "lo = first index that might match;" is a prose invariant sketch, not code:
 # an assignment whose right side is three or more plain words
 _PROSE_ASSIGN_RE = re.compile(r"^\s*\w+\s*=\s*[A-Za-z]+(\s+[A-Za-z]+){2,}\s*[.;]?\s*$")
 
 
-def _looks_like_code(line: str) -> bool:
+def _looks_like_code(line: str, strong_only: bool = False) -> bool:
     if not line.strip():
         return False
     if _PROSE_ASSIGN_RE.match(line):
         return False
-    return any(rx.search(line) for rx in _CODEISH_RES)
+    patterns = _STRONG_CODEISH_RES if strong_only else _CODEISH_RES
+    return any(rx.search(line) for rx in patterns)
 
 
 @rule(
@@ -261,7 +275,7 @@ def commented_out_code(sf: SourceFile, cfg: Config) -> Iterable[Finding]:
         )
         if (len(lines) >= 2 and codeish / len(lines) >= cfg.code_line_fraction and codeish >= 2) or (
             len(lines) == 1
-            and _looks_like_code(lines[0])
+            and _looks_like_code(lines[0], strong_only=True)
             and not _TODO_RE.search(lines[0])
             and not single_restates
         ):
