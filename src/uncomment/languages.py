@@ -106,6 +106,58 @@ PY = LangSpec(
     ),
 )
 
+JAVA = LangSpec(
+    name="java",
+    grammar="java",
+    doc_block_prefixes=("/**",),
+    function_nodes=frozenset({"method_declaration", "constructor_declaration", "lambda_expression"}),
+    keywords=frozenset(
+        "class interface enum extends implements public private protected static final void int long "
+        "short byte char boolean float double new return if else for while do switch case break continue "
+        "try catch finally throw throws import package this super abstract synchronized instanceof".split()
+    ),
+)
+
+CSHARP = LangSpec(
+    name="csharp",
+    grammar="csharp",
+    doc_line_prefixes=("///",),
+    doc_block_prefixes=("/**",),
+    function_nodes=frozenset(
+        {"method_declaration", "constructor_declaration", "local_function_statement", "lambda_expression"}
+    ),
+    keywords=frozenset(
+        "class struct interface enum namespace using public private protected internal static readonly "
+        "void var new return if else for foreach while do switch case break continue try catch finally "
+        "throw async await string int bool this base override virtual abstract sealed partial get set".split()
+    ),
+)
+
+KOTLIN = LangSpec(
+    name="kotlin",
+    grammar="kotlin",
+    doc_block_prefixes=("/**",),
+    function_nodes=frozenset({"function_declaration", "lambda_literal"}),
+    keywords=frozenset(
+        "fun val var class object interface enum data sealed if else for while when return import package "
+        "this super null true false is in as try catch finally throw suspend override open private public "
+        "internal protected companion init".split()
+    ),
+)
+
+SWIFT = LangSpec(
+    name="swift",
+    grammar="swift",
+    doc_line_prefixes=("///",),
+    doc_block_prefixes=("/**",),
+    function_nodes=frozenset({"function_declaration", "init_declaration", "lambda_literal"}),
+    keywords=frozenset(
+        "func let var class struct enum protocol extension if else guard for while switch case return "
+        "import init self super nil true false try catch throw throws async await defer private public "
+        "internal fileprivate static override final where in is as some any".split()
+    ),
+)
+
 EXTENSIONS: dict[str, LangSpec] = {
     ".c": C, ".h": C,
     ".cpp": CPP, ".cc": CPP, ".cxx": CPP, ".hpp": CPP, ".hh": CPP, ".hxx": CPP,
@@ -115,9 +167,13 @@ EXTENSIONS: dict[str, LangSpec] = {
     ".rs": RUST,
     ".go": GO,
     ".py": PY, ".pyi": PY,
+    ".java": JAVA,
+    ".cs": CSHARP,
+    ".kt": KOTLIN, ".kts": KOTLIN,
+    ".swift": SWIFT,
 }
 
-COMMENT_NODE_TYPES = frozenset({"comment", "line_comment", "block_comment"})
+COMMENT_NODE_TYPES = frozenset({"comment", "line_comment", "block_comment", "multiline_comment"})
 
 # files whose purpose is the public interface: API documentation BELONGS here
 _INTERFACE_SUFFIXES = (".h", ".hpp", ".hh", ".hxx", ".d.ts", ".d.mts", ".d.cts", ".pyi")

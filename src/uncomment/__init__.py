@@ -1,3 +1,3 @@
 """uncomment: lint and gate overly detailed comments introduced by coding agents."""
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
